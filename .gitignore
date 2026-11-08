@@ -1,0 +1,26 @@
+# binaries i build
+bin/
+*.exe
+*.test
+*.out
+vendor/
+
+# env i tajne 
+.env
+.env.*
+!.env.example
+
+# ide podesavanja
+.idea/
+.vscode/
+*.swp
+
+# os
+.DS_Store
+Thumbs.db
+
+# docker lokalne izmene
+docker-compose.override.yml
+
+# air live reload
+tmp/

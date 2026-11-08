@@ -1,0 +1,83 @@
+version: "3.9"
+
+services:
+  # baze i storage
+  mongo:
+    image: mongo:7
+    container_name: gdrive-mongo
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: secret
+    volumes:
+      - mongo_data:/data/db
+
+  neo4j:
+    image: neo4j:5
+    container_name: gdrive-neo4j
+    ports:
+      - "7474:7474"   # browser ui
+      - "7687:7687"   # bolt port
+    environment:
+      NEO4J_AUTH: neo4j/password
+    volumes:
+      - neo4j_data:/data
+
+  cassandra:
+    image: cassandra:4
+    container_name: gdrive-cassandra
+    ports:
+      - "9042:9042"
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+
+  minio:
+    image: minio/minio:latest
+    container_name: gdrive-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"   # minio web konzola (minioadmin/minioadmin)
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+
+  # servisi - otkomentarisati kad budemo pravili dockerfile za svaki
+  # api-gateway:
+  #   build: ./api-gateway
+  #   ports:
+  #     - "8080:8080"
+
+  # users-service:
+  #   build: ./services/users-service
+  #   ports:
+  #     - "8081:8081"
+
+  # files-service:
+  #   build: ./services/files-service
+  #   ports:
+  #     - "8082:8082"
+
+  # sharing-service:
+  #   build: ./services/sharing-service
+  #   ports:
+  #     - "8083:8083"
+
+  # notifications-service:
+  #   build: ./services/notifications-service
+  #   ports:
+  #     - "8084:8084"
+
+  # analytics-service:
+  #   build: ./services/analytics-service
+  #   ports:
+  #     - "8085:8085"
+
+volumes:
+  mongo_data:
+  neo4j_data:
+  cassandra_data:
+  minio_data:
