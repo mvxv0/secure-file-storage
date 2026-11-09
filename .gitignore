@@ -4,11 +4,23 @@ bin/
 *.test
 *.out
 vendor/
+/main
+dist/
 
-# env i tajne 
+# Go
+*.coverprofile
+coverage.html
+go.work.sum
+
+# env i tajne
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.crt
+secrets/
+certs/
 
 # ide podesavanja
 .idea/
@@ -24,3 +36,16 @@ docker-compose.override.yml
 
 # air live reload
 tmp/
+
+# logovi
+*.log
+logs/
+
+# frontend
+node_modules/
+frontend/dist/
+frontend/build/
+
+# lokalni podaci
+data/
+uploads/

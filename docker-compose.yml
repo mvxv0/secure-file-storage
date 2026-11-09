@@ -1,83 +1,43 @@
-version: "3.9"
-
 services:
-  # baze i storage
+  # baza za users i files metapodatke
   mongo:
     image: mongo:7
     container_name: gdrive-mongo
+    restart: unless-stopped
     ports:
       - "27017:27017"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: secret
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
     volumes:
       - mongo_data:/data/db
 
-  neo4j:
-    image: neo4j:5
-    container_name: gdrive-neo4j
+  # mailhog za hvatanje otp i verifikacionih mejlova (web ui na http://localhost:8025)
+  mailhog:
+    image: mailhog/mailhog
+    container_name: gdrive-mailhog
+    restart: unless-stopped
     ports:
-      - "7474:7474"   # browser ui
-      - "7687:7687"   # bolt port
-    environment:
-      NEO4J_AUTH: neo4j/password
-    volumes:
-      - neo4j_data:/data
+      - "1025:1025"   # smtp port
+      - "8025:8025"   # web dashboard
 
-  cassandra:
-    image: cassandra:4
-    container_name: gdrive-cassandra
-    ports:
-      - "9042:9042"
-    volumes:
-      - cassandra_data:/var/lib/cassandra
-
-  minio:
-    image: minio/minio:latest
-    container_name: gdrive-minio
-    command: server /data --console-address ":9001"
-    ports:
-      - "9000:9000"
-      - "9001:9001"   # minio web konzola (minioadmin/minioadmin)
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    volumes:
-      - minio_data:/data
-
-  # servisi - otkomentarisati kad budemo pravili dockerfile za svaki
-  # api-gateway:
-  #   build: ./api-gateway
+  # minio zakomentarisan dok ne dodjemo do files servisa (kad resimo tag ili pitamo asistenta)
+  # minio:
+  #   image: quay.io/minio/minio
+  #   container_name: gdrive-minio
+  #   restart: unless-stopped
+  #   command: server /data --console-address ":9001"
   #   ports:
-  #     - "8080:8080"
+  #     - "9000:9000"
+  #     - "9001:9001"
+  #   environment:
+  #     MINIO_ROOT_USER: ${MINIO_USER}
+  #     MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+  #   volumes:
+  #     - minio_data:/data
 
-  # users-service:
-  #   build: ./services/users-service
-  #   ports:
-  #     - "8081:8081"
-
-  # files-service:
-  #   build: ./services/files-service
-  #   ports:
-  #     - "8082:8082"
-
-  # sharing-service:
-  #   build: ./services/sharing-service
-  #   ports:
-  #     - "8083:8083"
-
-  # notifications-service:
-  #   build: ./services/notifications-service
-  #   ports:
-  #     - "8084:8084"
-
-  # analytics-service:
-  #   build: ./services/analytics-service
-  #   ports:
-  #     - "8085:8085"
+  # neo4j i cassandra dodajemo za sharing i notifications
 
 volumes:
   mongo_data:
-  neo4j_data:
-  cassandra_data:
-  minio_data:
+  # minio_data:
