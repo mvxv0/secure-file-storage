@@ -1,3 +1,3 @@
-module github.com/YOUR_ORG/backend/api-gateway
+module github.com/mvxv0/secure-file-storage/api-gateway
 
 go 1.27.3
