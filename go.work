@@ -1,0 +1,12 @@
+go 1.27.3
+
+use (
+	./api-gateway
+	./common
+	./services/analytics-service
+	./services/files-service
+	./services/notifications-service
+	./services/sharing-service
+	./services/users-service
+)
+
