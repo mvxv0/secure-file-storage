@@ -9,7 +9,10 @@ import (
 	"github.com/mvxv0/secure-file-storage/common/httputil"
 	"github.com/mvxv0/secure-file-storage/services/users-service/internal/config"
 	"github.com/mvxv0/secure-file-storage/services/users-service/internal/database"
+	"github.com/mvxv0/secure-file-storage/services/users-service/internal/handler"
 	"github.com/mvxv0/secure-file-storage/services/users-service/internal/mailer"
+	"github.com/mvxv0/secure-file-storage/services/users-service/internal/repository"
+	"github.com/mvxv0/secure-file-storage/services/users-service/internal/service"
 )
 
 func main() {
@@ -31,7 +34,11 @@ func main() {
 
 	// inicijalizacija smtp klijenta za mailhog (docker kontejner gdrive-mailhog na portu 1025, web inbox na 8025)
 	mailClient := mailer.New(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPFrom)
-	_ = mailClient // koristice se u handlerima za registraciju, otp i zaboravljenu sifru
+
+	// inicijalizacija slojeva: repository -> service -> handler
+	userRepo := repository.NewUserRepository(mongoDB.DB)
+	authService := service.NewAuthService(userRepo, mailClient, cfg)
+	authHandler := handler.NewAuthHandler(authService)
 
 	mux := http.NewServeMux()
 
@@ -53,10 +60,14 @@ func main() {
 		})
 	}
 
-	// rute za proveru zdravlja servisa (direktno na :8081/health ili kroz gateway na :8080/api/auth/health)
+	// rute za proveru zdravlja servisa
 	mux.HandleFunc("GET /health", healthHandler)
 	mux.HandleFunc("GET /api/auth/health", healthHandler)
 	mux.HandleFunc("GET /api/users/health", healthHandler)
+
+	// rute za registraciju i potvrdu registracije (zahtev 1.1)
+	mux.HandleFunc("POST /api/auth/register", authHandler.Register)
+	mux.HandleFunc("POST /api/auth/verify-email", authHandler.VerifyEmail)
 
 	// pokretanje http servera za users-service na portu 8081
 	server := &http.Server{
