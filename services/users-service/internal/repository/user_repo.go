@@ -76,12 +76,60 @@ func (r *UserRepository) SetUserVerified(ctx context.Context, email string) erro
 	return nil
 }
 
+// IncrementFailedLogins povecava brojac neuspelih pokusaja prijave i zakljucava nalog ako je >= 5
+func (r *UserRepository) IncrementFailedLogins(ctx context.Context, email string, currentAttempts int, lockDuration time.Duration) (*time.Time, error) {
+	newAttempts := currentAttempts + 1
+	update := bson.M{
+		"$set": bson.M{
+			"failed_login_attempts": newAttempts,
+			"updated_at":            time.Now().UTC(),
+		},
+	}
+
+	var lockedUntil *time.Time
+	// ako je promasio 5 ili vise puta, zakljucavamo nalog na odredjeno vreme (npr. 5 min)
+	if newAttempts >= 5 {
+		lockTime := time.Now().UTC().Add(lockDuration)
+		lockedUntil = &lockTime
+		update["$set"].(bson.M)["locked_until"] = lockedUntil
+	}
+
+	_, err := r.db.Collection("users").UpdateOne(ctx, bson.M{"email": email}, update)
+	return lockedUntil, err
+}
+
+// ResetFailedLogins vraca brojac neuspelih prijava na 0 i uklanja zakljucavanje naloga
+func (r *UserRepository) ResetFailedLogins(ctx context.Context, email string) error {
+	update := bson.M{
+		"$set": bson.M{
+			"failed_login_attempts": 0,
+			"locked_until":          nil,
+			"updated_at":            time.Now().UTC(),
+		},
+	}
+	_, err := r.db.Collection("users").UpdateOne(ctx, bson.M{"email": email}, update)
+	return err
+}
+
 // SaveAuthToken cuva token (za verifikaciju, otp ili reset lozinke)
 func (r *UserRepository) SaveAuthToken(ctx context.Context, token *model.AuthToken) error {
 	token.CreatedAt = time.Now().UTC()
 	token.Used = false
 
 	_, err := r.db.Collection("auth_tokens").InsertOne(ctx, token)
+	return err
+}
+
+// InvalidateExistingTokens ponistava prethodne neiskoriscene tokene istog tipa pre izdavanja novog
+func (r *UserRepository) InvalidateExistingTokens(ctx context.Context, email string, tokenType model.TokenType) error {
+	filter := bson.M{
+		"email": email,
+		"type":  tokenType,
+		"used":  false,
+	}
+	_, err := r.db.Collection("auth_tokens").UpdateMany(ctx, filter, bson.M{
+		"$set": bson.M{"used": true},
+	})
 	return err
 }
 
@@ -121,3 +169,19 @@ func (r *UserRepository) MarkTokenUsed(ctx context.Context, id string) error {
 	return err
 }
 
+// RevokeToken cuva JWT token na crnu listu (logout)
+func (r *UserRepository) RevokeToken(ctx context.Context, tokenStr string, expiresAt time.Time) error {
+	doc := model.RevokedToken{
+		Token:     tokenStr,
+		ExpiresAt: expiresAt,
+		CreatedAt: time.Now().UTC(),
+	}
+	_, err := r.db.Collection("revoked_tokens").InsertOne(ctx, doc)
+	return err
+}
+
+// IsTokenRevoked proverava da li se token nalazi na crnoj listi odjavljenih tokena
+func (r *UserRepository) IsTokenRevoked(ctx context.Context, tokenStr string) bool {
+	count, err := r.db.Collection("revoked_tokens").CountDocuments(ctx, bson.M{"token": tokenStr})
+	return err == nil && count > 0
+}

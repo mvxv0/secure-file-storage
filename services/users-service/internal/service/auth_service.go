@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mvxv0/secure-file-storage/common/auth"
 	"github.com/mvxv0/secure-file-storage/services/users-service/internal/config"
 	"github.com/mvxv0/secure-file-storage/services/users-service/internal/mailer"
 	"github.com/mvxv0/secure-file-storage/services/users-service/internal/model"
@@ -18,7 +19,11 @@ import (
 
 var (
 	ErrUserAlreadyVerified = errors.New("nalog je vec potvrdjen")
-	ErrInvalidToken        = errors.New("neispravan ili istekao verifikacioni kod")
+	ErrUserNotVerified     = errors.New("nalog nije potvrdjen. Molimo vas da prvo potvrdite email")
+	ErrInvalidCredentials  = errors.New("neispravna email adresa ili lozinka")
+	ErrAccountLocked       = errors.New("nalog je privremeno zakljucan zbog vise uzastopnih neuspelih pokusaja prijave")
+	ErrPasswordExpired     = errors.New("vasa lozinka je istekla (starija od 60 dana). Prijava je onemogucena dok ne promenite lozinku")
+	ErrInvalidToken        = errors.New("neispravan ili istekao kod")
 )
 
 type AuthService struct {
@@ -156,6 +161,167 @@ func (s *AuthService) VerifyEmail(ctx context.Context, email, code string) error
 	return s.repo.SetUserVerified(ctx, email)
 }
 
+// Login vrsi 1. KORAK prijave (lozinka + provere + slanje OTP-a):
+// 1. Provera postojanja naloga
+// 2. Provera da li je nalog privremeno zakljucan (brute-force zastita)
+// 3. Provera lozinke (bcrypt)
+// 4. Provera da li je nalog verifikovan (is_verified)
+// 5. Provera auditabilnosti: da li je lozinka starija od maksimalnog roka (60 dana)
+// 6. Generisanje i slanje 6-cifrenog OTP koda na mejl
+func (s *AuthService) Login(ctx context.Context, email, password string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	password = strings.TrimSpace(password)
+
+	if email == "" || password == "" {
+		return errors.New("email i lozinka su obavezni")
+	}
+
+	user, err := s.repo.FindByEmail(ctx, email)
+	if err != nil {
+		// radi bezbednosti (user enumeration protection), vracamo genericnu poruku
+		return ErrInvalidCredentials
+	}
+
+	// 1. Provera da li je nalog zakljucan zbog neuspelih pokusaja
+	now := time.Now().UTC()
+	if user.LockedUntil != nil && user.LockedUntil.After(now) {
+		preostalo := time.Until(*user.LockedUntil).Round(time.Second)
+		return fmt.Errorf("%w. Pokusajte ponovo za %s (do %s)", ErrAccountLocked, preostalo, user.LockedUntil.Format("15:04:05"))
+	}
+
+	// 2. Provera lozinke
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		// lozinka nije tacna -> povecavamo brojac neuspeha i potencijalno zakljucavamo
+		lockedUntil, _ := s.repo.IncrementFailedLogins(ctx, email, user.FailedLoginAttempts, s.cfg.AccountLockDuration)
+		if lockedUntil != nil {
+			return fmt.Errorf("%w. Nalog je zakljucan na %s", ErrAccountLocked, s.cfg.AccountLockDuration)
+		}
+		return ErrInvalidCredentials
+	}
+
+	// lozinka je tacna -> resetujemo brojac neuspelih pokusaja
+	_ = s.repo.ResetFailedLogins(ctx, email)
+
+	// 3. Provera da li je potvrdjen nalog
+	if !user.IsVerified {
+		return ErrUserNotVerified
+	}
+
+	// 4. Provera auditabilnosti: istek roka vazenja lozinke (maksimalno 60 dana)
+	if time.Since(user.PasswordChangedAt) > s.cfg.MaxPasswordAge {
+		return ErrPasswordExpired
+	}
+
+	// 5. Generisanje 6-cifrenog jednokratnog koda (OTP) za 2FA
+	otpCode, err := generateNumericCode(6)
+	if err != nil {
+		return fmt.Errorf("greska pri generisanju OTP koda: %w", err)
+	}
+
+	// ponistavamo sve prethodne neiskoriscene OTP kodove za ovog korisnika
+	_ = s.repo.InvalidateExistingTokens(ctx, user.Email, model.TokenOTP)
+
+	// cuvamo hesovan OTP kod u bazi
+	codeHash, _ := bcrypt.GenerateFromPassword([]byte(otpCode), bcrypt.DefaultCost)
+	authToken := &model.AuthToken{
+		Email:     user.Email,
+		CodeHash:  string(codeHash),
+		Type:      model.TokenOTP,
+		ExpiresAt: now.Add(s.cfg.OTPExpiration), // npr. 5 minuta (300 sekundi)
+	}
+
+	if err := s.repo.SaveAuthToken(ctx, authToken); err != nil {
+		return fmt.Errorf("greska pri cuvanju OTP koda: %w", err)
+	}
+
+	// slanje OTP koda preko MailHog-a
+	subject := "Vas jednokratni kod za prijavu (OTP)"
+	body := fmt.Sprintf(
+		"Pozdrav %s,\n\nVas jednokratni kod za prijavu na platformu je: %s\n\n"+
+			"Kod je vazeci %d sekundi (%s).\n"+
+			"Ukoliko niste vi zatrazili prijavu, preporucujemo da promenite lozinku.",
+		user.FirstName, otpCode, int(s.cfg.OTPExpiration.Seconds()), s.cfg.OTPExpiration,
+	)
+
+	_ = s.mailer.SendEmail(user.Email, subject, body)
+
+	return nil
+}
+
+type AuthResponseData struct {
+	Token string      `json:"token"`
+	User  *model.User `json:"user"`
+}
+
+// VerifyLoginOTP vrsi 2. KORAK prijave (provera OTP koda i izdavanje JWT tokena)
+func (s *AuthService) VerifyLoginOTP(ctx context.Context, email, code string) (*AuthResponseData, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	code = strings.TrimSpace(code)
+
+	if email == "" || code == "" {
+		return nil, errors.New("email i OTP kod su obavezni")
+	}
+
+	user, err := s.repo.FindByEmail(ctx, email)
+	if err != nil {
+		return nil, ErrInvalidCredentials
+	}
+
+	// trazenje vazeceg OTP koda
+	token, err := s.repo.FindValidToken(ctx, email, model.TokenOTP)
+	if err != nil {
+		return nil, ErrInvalidToken
+	}
+
+	// poređenje unetog koda sa hešom u bazi
+	if err := bcrypt.CompareHashAndPassword([]byte(token.CodeHash), []byte(code)); err != nil {
+		return nil, ErrInvalidToken
+	}
+
+	// oznacavamo OTP token kao iskoriscen da se ne moze ponovo iskoristiti
+	_ = s.repo.MarkTokenUsed(ctx, token.ID)
+
+	// generisanje JWT tokena (potpisan tajnim kljucem iz konfiguracije)
+	jwtToken, err := auth.GenerateToken(
+		s.cfg.JWTSecret,
+		user.ID,
+		user.Email,
+		string(user.Role),
+		s.cfg.JWTExpiration,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("greska pri generisanju JWT tokena: %w", err)
+	}
+
+	return &AuthResponseData{
+		Token: jwtToken,
+		User:  user,
+	}, nil
+}
+
+// Logout stavlja JWT token na crnu listu tako da vise ne moze da se koristi
+func (s *AuthService) Logout(ctx context.Context, tokenStr string) error {
+	tokenStr = strings.TrimSpace(tokenStr)
+	if tokenStr == "" {
+		return errors.New("token je obavezan za odjavu")
+	}
+
+	// validiramo token da bismo izvukli vreme isteka (exp)
+	claims, err := auth.ValidateToken(tokenStr, s.cfg.JWTSecret)
+	if err != nil {
+		// ako je token vec neispravan ili istekao, smatramo da je odjavljen
+		return nil
+	}
+
+	expiresAt := time.Unix(claims.Expire, 0).UTC()
+	return s.repo.RevokeToken(ctx, tokenStr, expiresAt)
+}
+
+// IsTokenBlacklisted proverava da li je token na crnoj listi (za middleware)
+func (s *AuthService) IsTokenBlacklisted(ctx context.Context, tokenStr string) bool {
+	return s.repo.IsTokenRevoked(ctx, tokenStr)
+}
+
 // generateNumericCode generise siguran nasumicni niz cifara date duzine
 func generateNumericCode(length int) (string, error) {
 	code := make([]byte, length)
@@ -168,4 +334,3 @@ func generateNumericCode(length int) (string, error) {
 	}
 	return string(code), nil
 }
-

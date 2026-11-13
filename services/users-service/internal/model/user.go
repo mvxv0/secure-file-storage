@@ -11,19 +11,20 @@ const (
 
 // User predstavlja dokument korisnika u MongoDB kolekciji 'users'
 type User struct {
-	ID                string     `json:"id" bson:"_id,omitempty"`
-	FirstName         string     `json:"firstName" bson:"first_name"`
-	LastName          string     `json:"lastName" bson:"last_name"`
-	Email             string     `json:"email" bson:"email"`
-	PasswordHash      string     `json:"-" bson:"password_hash"` // json:"-" sprecava slanje hesa lozinke nazad kroz api
-	Role              Role       `json:"role" bson:"role"`
-	IsVerified        bool       `json:"isVerified" bson:"is_verified"`
-	QuotaLimit        int64      `json:"quotaLimit" bson:"quota_limit"`               // maksimalna kvota u bajtovima
-	QuotaUsed         int64      `json:"quotaUsed" bson:"quota_used"`                 // trenutno zauzece u bajtovima
-	PasswordChangedAt time.Time  `json:"passwordChangedAt" bson:"password_changed_at"` // za proveru starosti sifre (min 1 dan, max 60 dana)
-	LockedUntil       *time.Time `json:"lockedUntil,omitempty" bson:"locked_until,omitempty"`
-	CreatedAt         time.Time  `json:"createdAt" bson:"created_at"`
-	UpdatedAt         time.Time  `json:"updatedAt" bson:"updated_at"`
+	ID                  string     `json:"id" bson:"_id,omitempty"`
+	FirstName           string     `json:"firstName" bson:"first_name"`
+	LastName            string     `json:"lastName" bson:"last_name"`
+	Email               string     `json:"email" bson:"email"`
+	PasswordHash        string     `json:"-" bson:"password_hash"` // json:"-" sprecava slanje hesa lozinke nazad kroz api
+	Role                Role       `json:"role" bson:"role"`
+	IsVerified          bool       `json:"isVerified" bson:"is_verified"`
+	QuotaLimit          int64      `json:"quotaLimit" bson:"quota_limit"`               // maksimalna kvota u bajtovima
+	QuotaUsed           int64      `json:"quotaUsed" bson:"quota_used"`                 // trenutno zauzece u bajtovima
+	PasswordChangedAt   time.Time  `json:"passwordChangedAt" bson:"password_changed_at"` // za proveru starosti sifre (min 1 dan, max 60 dana)
+	FailedLoginAttempts int        `json:"failedLoginAttempts" bson:"failed_login_attempts"`
+	LockedUntil         *time.Time `json:"lockedUntil,omitempty" bson:"locked_until,omitempty"`
+	CreatedAt           time.Time  `json:"createdAt" bson:"created_at"`
+	UpdatedAt           time.Time  `json:"updatedAt" bson:"updated_at"`
 }
 
 type TokenType string
@@ -44,4 +45,12 @@ type AuthToken struct {
 	ExpiresAt time.Time `json:"expiresAt" bson:"expires_at"`
 	Used      bool      `json:"used" bson:"used"`
 	CreatedAt time.Time `json:"createdAt" bson:"created_at"`
+}
+
+// RevokedToken cuva odjavljene JWT tokene u kolekciji 'revoked_tokens' (blacklist)
+type RevokedToken struct {
+	ID        string    `bson:"_id,omitempty"`
+	Token     string    `bson:"token"`
+	ExpiresAt time.Time `bson:"expires_at"`
+	CreatedAt time.Time `bson:"created_at"`
 }
