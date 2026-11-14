@@ -44,6 +44,12 @@ func Connect(uri, dbName string) (*MongoDB, error) {
 		Options: options.Index().SetExpireAfterSeconds(0),
 	})
 
+	// ttl indeks nad expires_at poljem u kolekciji 'revoked_tokens' (za logout blacklist)
+	_, _ = db.Collection("revoked_tokens").Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "expires_at", Value: 1}},
+		Options: options.Index().SetExpireAfterSeconds(0),
+	})
+
 	return &MongoDB{
 		Client: client,
 		DB:     db,

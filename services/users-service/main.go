@@ -69,6 +69,11 @@ func main() {
 	mux.HandleFunc("POST /api/auth/register", authHandler.Register)
 	mux.HandleFunc("POST /api/auth/verify-email", authHandler.VerifyEmail)
 
+	// rute za kombinovanu prijavu (lozinka + OTP) i odjavu (zahtev 1.2)
+	mux.HandleFunc("POST /api/auth/login", authHandler.Login)
+	mux.HandleFunc("POST /api/auth/verify-otp", authHandler.VerifyOTP)
+	mux.HandleFunc("POST /api/auth/logout", authHandler.Logout)
+
 	// pokretanje http servera za users-service na portu 8081
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
