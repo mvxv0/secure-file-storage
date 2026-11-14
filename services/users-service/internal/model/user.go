@@ -54,3 +54,25 @@ type RevokedToken struct {
 	ExpiresAt time.Time `bson:"expires_at"`
 	CreatedAt time.Time `bson:"created_at"`
 }
+
+type QuotaRequestStatus string
+
+const (
+	QuotaStatusPending  QuotaRequestStatus = "PENDING"
+	QuotaStatusApproved QuotaRequestStatus = "APPROVED"
+	QuotaStatusRejected QuotaRequestStatus = "REJECTED"
+)
+
+// QuotaRequest predstavlja zahtev korisnika za povecanje kvote skladista u MongoDB kolekciji 'quota_requests'
+type QuotaRequest struct {
+	ID             string             `json:"id" bson:"_id,omitempty"`
+	UserID         string             `json:"userId" bson:"user_id"`
+	UserEmail      string             `json:"userEmail" bson:"user_email"`
+	CurrentQuota   int64              `json:"currentQuota" bson:"current_quota"`     // trenutna kvota u bajtovima
+	RequestedQuota int64              `json:"requestedQuota" bson:"requested_quota"` // trazena kvota u bajtovima
+	Reason         string             `json:"reason,omitempty" bson:"reason,omitempty"`
+	Status         QuotaRequestStatus `json:"status" bson:"status"`
+	ResolvedBy     string             `json:"resolvedBy,omitempty" bson:"resolved_by,omitempty"` // ID administratora
+	ResolvedAt     *time.Time         `json:"resolvedAt,omitempty" bson:"resolved_at,omitempty"`
+	CreatedAt      time.Time          `json:"createdAt" bson:"created_at"`
+}
