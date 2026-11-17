@@ -49,6 +49,24 @@ func Connect(uri, dbName string) (*MongoDB, error) {
 		Options: options.Index().SetUnique(true),
 	})
 
+	// indeks za brzo listanje datoteka unutar foldera korisnika
+	_, _ = db.Collection("files").Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "owner_id", Value: 1},
+			{Key: "parent_folder_id", Value: 1},
+		},
+	})
+
+	// jedinstveni indeks za naziv datoteke unutar istog foldera za istog vlasnika
+	_, _ = db.Collection("files").Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "owner_id", Value: 1},
+			{Key: "parent_folder_id", Value: 1},
+			{Key: "name", Value: 1},
+		},
+		Options: options.Index().SetUnique(true),
+	})
+
 	return &MongoDB{
 		Client: client,
 		DB:     db,
@@ -68,4 +86,3 @@ func (m *MongoDB) Disconnect(ctx context.Context) error {
 	}
 	return m.Client.Disconnect(ctx)
 }
-

@@ -8,16 +8,21 @@ import (
 
 	"github.com/mvxv0/secure-file-storage/common/auth"
 	"github.com/mvxv0/secure-file-storage/common/httputil"
+	"github.com/mvxv0/secure-file-storage/services/files-service/internal/model"
 	"github.com/mvxv0/secure-file-storage/services/files-service/internal/repository"
 	"github.com/mvxv0/secure-file-storage/services/files-service/internal/service"
 )
 
 type FolderHandler struct {
 	folderService *service.FolderService
+	fileService   *service.FileService
 }
 
-func NewFolderHandler(folderService *service.FolderService) *FolderHandler {
-	return &FolderHandler{folderService: folderService}
+func NewFolderHandler(folderService *service.FolderService, fileService *service.FileService) *FolderHandler {
+	return &FolderHandler{
+		folderService: folderService,
+		fileService:   fileService,
+	}
 }
 
 // CreateFolder kreira folder u root-u ili kao podfolder (zahtev 1.4)
@@ -59,7 +64,7 @@ func (h *FolderHandler) CreateFolder(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteSuccess(w, http.StatusCreated, "Folder je uspesno kreiran", folder)
 }
 
-// GetFolderContents vraca podfoldere unutar korenskog foldera ili odredjenog podfoldera
+// GetFolderContents vraca podfoldere i datoteke unutar korenskog foldera ili odredjenog podfoldera
 func (h *FolderHandler) GetFolderContents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		httputil.WriteError(w, http.StatusMethodNotAllowed, "Dozvoljen je samo GET metod")
@@ -94,9 +99,16 @@ func (h *FolderHandler) GetFolderContents(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	files := make([]model.FileMetadata, 0)
+	if h.fileService != nil {
+		if fList, fErr := h.fileService.GetFilesInFolder(r.Context(), claims.UserID, folderID); fErr == nil {
+			files = fList
+		}
+	}
+
 	httputil.WriteSuccess(w, http.StatusOK, "Sadrzaj foldera uspesno dobavljen", map[string]interface{}{
 		"currentFolderId": folderID,
 		"folders":         folders,
+		"files":           files,
 	})
 }
-
