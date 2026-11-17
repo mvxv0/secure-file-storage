@@ -62,13 +62,25 @@ func main() {
 
 	// mapiranje ruta: sve sto stigne na /api/auth/* i /api/users/* ide na users-service (:8081)
 	mux.Handle("/api/auth/", usersProxy)
+	mux.Handle("/api/auth", usersProxy)
 	mux.Handle("/api/users/", usersProxy)
+	mux.Handle("/api/users", usersProxy)
+
+	// files-service rute (:8082)
 	mux.Handle("/api/files/", filesProxy)
+	mux.Handle("/api/files", filesProxy)
 	mux.Handle("/api/folders/", filesProxy)
+	mux.Handle("/api/folders", filesProxy)
+
+	// ostali servisi
 	mux.Handle("/api/sharing/", sharingProxy)
+	mux.Handle("/api/sharing", sharingProxy)
 	mux.Handle("/api/groups/", sharingProxy)
+	mux.Handle("/api/groups", sharingProxy)
 	mux.Handle("/api/notifications/", notificationsProxy)
+	mux.Handle("/api/notifications", notificationsProxy)
 	mux.Handle("/api/analytics/", analyticsProxy)
+	mux.Handle("/api/analytics", analyticsProxy)
 
 	server := &http.Server{
 		Addr:         ":" + port,
@@ -78,7 +90,7 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	log.Printf("[API-GATEWAY] Pokrenut na http://localhost:%s (Users -> %s)", port, usersURL)
+	log.Printf("[API-GATEWAY] Pokrenut na http://localhost:%s (Users -> %s, Files -> %s)", port, usersURL, filesURL)
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("[API-GATEWAY] Greska pri pokretanju servera: %v", err)
 	}
