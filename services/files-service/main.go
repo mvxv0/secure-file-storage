@@ -13,6 +13,7 @@ import (
 	"github.com/mvxv0/secure-file-storage/services/files-service/internal/handler"
 	"github.com/mvxv0/secure-file-storage/services/files-service/internal/repository"
 	"github.com/mvxv0/secure-file-storage/services/files-service/internal/service"
+	"github.com/mvxv0/secure-file-storage/services/files-service/internal/storage"
 )
 
 func main() {
@@ -31,9 +32,21 @@ func main() {
 		}()
 	}
 
+	// lokalno skladiste za binarni sadrzaj datoteka
+	fileStore := storage.NewLocalStore(cfg.StorageDir)
+
+	if mongoDB == nil {
+		mongoDB = &database.MongoDB{}
+	}
+
 	folderRepo := repository.NewFolderRepository(mongoDB.DB)
+	fileRepo := repository.NewFileRepository(mongoDB.DB)
+
 	folderService := service.NewFolderService(folderRepo)
-	folderHandler := handler.NewFolderHandler(folderService)
+	fileService := service.NewFileService(fileRepo, folderRepo, fileStore, cfg.DefaultStorageQuota)
+
+	folderHandler := handler.NewFolderHandler(folderService, fileService)
+	fileHandler := handler.NewFileHandler(fileService)
 
 	mux := http.NewServeMux()
 
@@ -54,16 +67,21 @@ func main() {
 		})
 	})
 
-	// rute za upravljanje folderima (zasticene JWT autorizacijom)
+	// rute za upravljanje folderima (zahtev 1.4)
 	mux.HandleFunc("POST /api/folders", auth.Middleware(cfg.JWTSecret, folderHandler.CreateFolder))
 	mux.HandleFunc("GET /api/folders", auth.Middleware(cfg.JWTSecret, folderHandler.GetFolderContents))
 	mux.HandleFunc("GET /api/folders/", auth.Middleware(cfg.JWTSecret, folderHandler.GetFolderContents))
 
+	// rute za otpremanje datoteka i novih verzija (zahtev 1.5)
+	mux.HandleFunc("POST /api/files", auth.Middleware(cfg.JWTSecret, fileHandler.UploadFile))
+	mux.HandleFunc("GET /api/files", auth.Middleware(cfg.JWTSecret, fileHandler.ListFiles))
+	mux.HandleFunc("/api/files/", auth.Middleware(cfg.JWTSecret, fileHandler.HandleFileByID))
+
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      mux,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
