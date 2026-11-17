@@ -33,6 +33,7 @@ const (
 	TokenVerification  TokenType = "VERIFY_EMAIL"   // token za potvrdu registracije
 	TokenOTP           TokenType = "LOGIN_OTP"      // 6-cifreni otp kod za 2fa prijavu
 	TokenPasswordReset TokenType = "PASSWORD_RESET" // token za zaboravljenu sifru
+	TokenAccountUpdate TokenType = "ACCOUNT_UPDATE" // kod za potvrdu izmene podataka naloga (US 02.04)
 	TokenMagicLink     TokenType = "MAGIC_LINK"     // token za povracaj naloga (magic link)
 )
 

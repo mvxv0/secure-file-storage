@@ -56,3 +56,27 @@ func TestAccountLockoutLogic(t *testing.T) {
 		t.Errorf("Nalog cije je zakljucavanje isteklo pre 1 minut ne sme biti blokiran")
 	}
 }
+
+func TestMinimumPasswordAgeForReset(t *testing.T) {
+	cfg := &config.Config{
+		MinPasswordAge: 24 * time.Hour, // 24h (1 dan)
+	}
+
+	now := time.Now().UTC()
+
+	// lozinka promenjena pre 2 sata (< 24h) 
+	tooYoungUser := &model.User{
+		PasswordChangedAt: now.Add(-2 * time.Hour),
+	}
+	if time.Since(tooYoungUser.PasswordChangedAt) >= cfg.MinPasswordAge {
+		t.Errorf("Lozinka stara 2 sata ne sme biti dozvoljena za promenu (mora biti bar 24h stara)")
+	}
+
+	// lozinka promenjena pre 25 sati (>= 24h)
+	eligibleUser := &model.User{
+		PasswordChangedAt: now.Add(-25 * time.Hour),
+	}
+	if time.Since(eligibleUser.PasswordChangedAt) < cfg.MinPasswordAge {
+		t.Errorf("Lozinka stara 25 sati mora biti dozvoljena za promenu")
+	}
+}

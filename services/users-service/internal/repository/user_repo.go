@@ -38,6 +38,64 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*model.
 	return &user, nil
 }
 
+// FindByID trazi korisnika po ID-ju
+func (r *UserRepository) FindByID(ctx context.Context, id string) (*model.User, error) {
+	var filter bson.M
+	if oid, err := primitive.ObjectIDFromHex(id); err == nil {
+		filter = bson.M{"_id": oid}
+	} else {
+		filter = bson.M{"_id": id}
+	}
+
+	var user model.User
+	err := r.db.Collection("users").FindOne(ctx, filter).Decode(&user)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+// UpdatePassword azurira hesiranu lozinku i vreme poslednje promene lozinke (password_changed_at)
+func (r *UserRepository) UpdatePassword(ctx context.Context, email, passwordHash string) error {
+	now := time.Now().UTC()
+	res, err := r.db.Collection("users").UpdateOne(ctx, bson.M{"email": email}, bson.M{
+		"$set": bson.M{
+			"password_hash":       passwordHash,
+			"password_changed_at": now,
+			"updated_at":          now,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if res.MatchedCount == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+// UpdateUserProfile azurira osnovne podatke korisnickog naloga (ime i prezime)
+func (r *UserRepository) UpdateUserProfile(ctx context.Context, email, firstName, lastName string) (*model.User, error) {
+	now := time.Now().UTC()
+	res, err := r.db.Collection("users").UpdateOne(ctx, bson.M{"email": email}, bson.M{
+		"$set": bson.M{
+			"first_name": firstName,
+			"last_name":  lastName,
+			"updated_at": now,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if res.MatchedCount == 0 {
+		return nil, ErrUserNotFound
+	}
+	return r.FindByEmail(ctx, email)
+}
+
 // CreateUser cuva novog korisnika u bazi
 func (r *UserRepository) CreateUser(ctx context.Context, user *model.User) error {
 	user.CreatedAt = time.Now().UTC()
