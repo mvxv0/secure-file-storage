@@ -254,6 +254,11 @@ func (s *FileService) checkQuota(ctx context.Context, ownerID string, additional
 	return nil
 }
 
+// GetTotalStorageUsage vraca ukupno zauzece skladista za datog korisnika
+func (s *FileService) GetTotalStorageUsage(ctx context.Context, ownerID string) (int64, error) {
+	return s.fileRepo.GetTotalUsedBytes(ctx, ownerID)
+}
+
 // GetFileMetadata vraca metapodatke datoteke uz proveru vlasnistva
 func (s *FileService) GetFileMetadata(ctx context.Context, ownerID, fileID string) (*model.FileMetadata, error) {
 	file, err := s.fileRepo.FindByID(ctx, fileID)
