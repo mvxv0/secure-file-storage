@@ -45,6 +45,7 @@ logs/
 node_modules/
 frontend/dist/
 frontend/build/
+frontend/.angular/
 
 # lokalni podaci
 data/
