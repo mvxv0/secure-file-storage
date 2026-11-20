@@ -81,6 +81,44 @@ func buildIDFilter(id string) bson.M {
 	return bson.M{"_id": id}
 }
 
+// UpdatePassword azurira hesiranu lozinku i vreme poslednje promene lozinke (password_changed_at)
+func (r *UserRepository) UpdatePassword(ctx context.Context, email, passwordHash string) error {
+	now := time.Now().UTC()
+	res, err := r.db.Collection("users").UpdateOne(ctx, bson.M{"email": email}, bson.M{
+		"$set": bson.M{
+			"password_hash":       passwordHash,
+			"password_changed_at": now,
+			"updated_at":          now,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if res.MatchedCount == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+// UpdateUserProfile azurira osnovne podatke korisnickog naloga (ime i prezime)
+func (r *UserRepository) UpdateUserProfile(ctx context.Context, email, firstName, lastName string) (*model.User, error) {
+	now := time.Now().UTC()
+	res, err := r.db.Collection("users").UpdateOne(ctx, bson.M{"email": email}, bson.M{
+		"$set": bson.M{
+			"first_name": firstName,
+			"last_name":  lastName,
+			"updated_at": now,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if res.MatchedCount == 0 {
+		return nil, ErrUserNotFound
+	}
+	return r.FindByEmail(ctx, email)
+}
+
 // CreateUser cuva novog korisnika u bazi
 func (r *UserRepository) CreateUser(ctx context.Context, user *model.User) error {
 	user.CreatedAt = time.Now().UTC()

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -23,6 +24,7 @@ var (
 	ErrInvalidCredentials  = errors.New("neispravna email adresa ili lozinka")
 	ErrAccountLocked       = errors.New("nalog je privremeno zakljucan zbog vise uzastopnih neuspelih pokusaja prijave")
 	ErrPasswordExpired     = errors.New("vasa lozinka je istekla (starija od 60 dana). Prijava je onemogucena dok ne promenite lozinku")
+	ErrPasswordTooYoung    = errors.New("lozinka mora biti stara minimalno 24h (1 dan) pre nego sto se moze ponovo promeniti")
 	ErrInvalidToken        = errors.New("neispravan ili istekao kod")
 )
 
@@ -322,6 +324,264 @@ func (s *AuthService) IsTokenBlacklisted(ctx context.Context, tokenStr string) b
 	return s.repo.IsTokenRevoked(ctx, tokenStr)
 }
 
+
+
+
+// Proverava postojanje korisnika sa unetom email adresom
+// Proverava da li je lozinka naloga minimalno 24h (1 dan) stara (s.cfg.MinPasswordAge)
+// Generise kratkotrajni sigurnosni token (s.cfg.ResetTokenExpiration = 15 min) i salje link na email
+func (s *AuthService) RequestPasswordReset(ctx context.Context, email string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return errors.New("email adresa je obavezna")
+	}
+
+	user, err := s.repo.FindByEmail(ctx, email)
+	if err != nil {
+		return err
+	}
+
+	// Kriterijum prihvatanja 
+	// Da bi se lozinka promenila, mora biti bar 1 dan (24h) stara.
+	if time.Since(user.PasswordChangedAt) < s.cfg.MinPasswordAge {
+		preostalo := (s.cfg.MinPasswordAge - time.Since(user.PasswordChangedAt)).Round(time.Second)
+		return fmt.Errorf("%w (preostalo jos %s)", ErrPasswordTooYoung, preostalo)
+	}
+
+	resetToken, err := generateSecureHexToken(16) 
+	if err != nil {
+		return fmt.Errorf("greska pri generisanju tokena za reset lozinke: %w", err)
+	}
+
+	// Ponistavamo prethodne neiskoriscene tokene za reset lozinke
+	_ = s.repo.InvalidateExistingTokens(ctx, user.Email, model.TokenPasswordReset)
+
+	tokenHash, err := bcrypt.GenerateFromPassword([]byte(resetToken), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("greska pri hesiranju reset tokena: %w", err)
+	}
+
+	now := time.Now().UTC()
+	authToken := &model.AuthToken{
+		Email:     user.Email,
+		CodeHash:  string(tokenHash),
+		Type:      model.TokenPasswordReset,
+		ExpiresAt: now.Add(s.cfg.ResetTokenExpiration),
+	}
+
+	if err := s.repo.SaveAuthToken(ctx, authToken); err != nil {
+		return fmt.Errorf("greska pri cuvanju tokena za reset lozinke: %w", err)
+	}
+
+	resetLink := fmt.Sprintf("%s/reset-password?email=%s&token=%s", strings.TrimRight(s.cfg.FrontendURL, "/"), user.Email, resetToken)
+
+	subject := "Resetovanje zaboravljene lozinke"
+	body := fmt.Sprintf(
+		"Pozdrav %s,\n\nPrimili smo zahtev za promenu zaboravljene lozinke vaseg naloga.\n\n"+
+			"Kratkotrajni link za resetovanje lozinke:\n%s\n\n"+
+			"Kod / token za resetovanje: %s\n\n"+
+			"Link i token vaze %d minuta (%s).\n",
+		user.FirstName, resetLink, resetToken, int(s.cfg.ResetTokenExpiration.Minutes()), s.cfg.ResetTokenExpiration,
+	)
+
+	_ = s.mailer.SendEmail(user.Email, subject, body)
+	return nil
+}
+
+type ResetPasswordInput struct {
+	Email           string `json:"email"`
+	Token           string `json:"token"`
+	NewPassword     string `json:"newPassword"`
+	ConfirmPassword string `json:"confirmPassword"`
+}
+
+// ResetPassword vrsi promenu lozinke koriscenjem kratkotrajnog tokena sa email-a:
+func (s *AuthService) ResetPassword(ctx context.Context, input ResetPasswordInput) error {
+	email := strings.ToLower(strings.TrimSpace(input.Email))
+	tokenStr := strings.TrimSpace(input.Token)
+
+	if email == "" || tokenStr == "" || input.NewPassword == "" || input.ConfirmPassword == "" {
+		return errors.New("email, token, nova lozinka i potvrda lozinke su obavezni")
+	}
+
+	if input.NewPassword != input.ConfirmPassword {
+		return ErrPasswordMismatch
+	}
+
+	if err := ValidateStrongPassword(input.NewPassword); err != nil {
+		return err
+	}
+
+	user, err := s.repo.FindByEmail(ctx, email)
+	if err != nil {
+		return err
+	}
+
+	// Provera da li je lozinka minimalno 24h (1 dan) stara
+	if time.Since(user.PasswordChangedAt) < s.cfg.MinPasswordAge {
+		preostalo := (s.cfg.MinPasswordAge - time.Since(user.PasswordChangedAt)).Round(time.Second)
+		return fmt.Errorf("%w (preostalo jos %s)", ErrPasswordTooYoung, preostalo)
+	}
+
+	tokenDoc, err := s.repo.FindValidToken(ctx, email, model.TokenPasswordReset)
+	if err != nil {
+		return ErrInvalidToken
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(tokenDoc.CodeHash), []byte(tokenStr)); err != nil {
+		return ErrInvalidToken
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("greska pri hesiranju nove lozinke: %w", err)
+	}
+
+	_ = s.repo.MarkTokenUsed(ctx, tokenDoc.ID)
+
+	if err := s.repo.UpdatePassword(ctx, email, string(hashedPassword)); err != nil {
+		return err
+	}
+
+	_ = s.repo.ResetFailedLogins(ctx, email)
+	return nil
+}
+
+
+
+// GetProfile vraca podatke o trenutno ulogovanom korisniku
+func (s *AuthService) GetProfile(ctx context.Context, email string) (*model.User, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	return s.repo.FindByEmail(ctx, email)
+}
+
+// RequestAccountUpdate generise i salje verifikacioni kod na email ulogovanog korisnika.
+func (s *AuthService) RequestAccountUpdate(ctx context.Context, email string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return errors.New("email je obavezan")
+	}
+
+	user, err := s.repo.FindByEmail(ctx, email)
+	if err != nil {
+		return err
+	}
+
+	code, err := generateNumericCode(6)
+	if err != nil {
+		return fmt.Errorf("greska pri generisanju koda za izmenu naloga: %w", err)
+	}
+
+	_ = s.repo.InvalidateExistingTokens(ctx, user.Email, model.TokenAccountUpdate)
+
+	codeHash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("greska pri hesiranju koda: %w", err)
+	}
+
+	now := time.Now().UTC()
+	authToken := &model.AuthToken{
+		Email:     user.Email,
+		CodeHash:  string(codeHash),
+		Type:      model.TokenAccountUpdate,
+		ExpiresAt: now.Add(s.cfg.OTPExpiration),
+	}
+
+	if err := s.repo.SaveAuthToken(ctx, authToken); err != nil {
+		return fmt.Errorf("greska pri cuvanju koda za izmenu naloga: %w", err)
+	}
+
+	subject := "Potvrda izmene podataka korisnickog naloga"
+	body := fmt.Sprintf(
+		"Pozdrav %s,\n\nZatrazili ste izmenu podataka vaseg korisnickog naloga.\n"+
+			"Vas jednokratni kod za potvrdu izmene podataka je: %s\n\n"+
+			"Kod je vazeci %d sekundi (%s).\n",
+		user.FirstName, code, int(s.cfg.OTPExpiration.Seconds()), s.cfg.OTPExpiration,
+	)
+
+	_ = s.mailer.SendEmail(user.Email, subject, body)
+	return nil
+}
+
+type UpdateAccountInput struct {
+	Code            string `json:"code"`
+	FirstName       string `json:"firstName"`
+	LastName        string `json:"lastName"`
+	NewPassword     string `json:"newPassword,omitempty"`
+	ConfirmPassword string `json:"confirmPassword,omitempty"`
+}
+
+// UpdateAccount vrsi izmenu podataka ulogovanog korisnika (ime, prezime i opciono lozinku)
+// uz obaveznu proveru koda poslatog na email naloga 
+func (s *AuthService) UpdateAccount(ctx context.Context, email string, input UpdateAccountInput) (*model.User, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	code := strings.TrimSpace(input.Code)
+	firstName := strings.TrimSpace(input.FirstName)
+	lastName := strings.TrimSpace(input.LastName)
+
+	if code == "" {
+		return nil, errors.New("verifikacioni kod sa emaila je obavezan za izmenu podataka naloga")
+	}
+
+	user, err := s.repo.FindByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+
+	// Ako ime ili prezime nisu prosledjeni u zahtevu, zadrzavamo postojece vrednosti
+	if firstName == "" {
+		firstName = user.FirstName
+	}
+	if lastName == "" {
+		lastName = user.LastName
+	}
+
+	if len(firstName) < 2 || len(firstName) > 50 || len(lastName) < 2 || len(lastName) > 50 {
+		return nil, ErrInvalidNameLength
+	}
+
+	// Ako korisnik menja i lozinku kroz izmenu naloga, proveravamo starost (min 24h) i jacinu lozinke
+	wantsPasswordChange := strings.TrimSpace(input.NewPassword) != "" || strings.TrimSpace(input.ConfirmPassword) != ""
+	var newPasswordHash string
+	if wantsPasswordChange {
+		if time.Since(user.PasswordChangedAt) < s.cfg.MinPasswordAge {
+			preostalo := (s.cfg.MinPasswordAge - time.Since(user.PasswordChangedAt)).Round(time.Second)
+			return nil, fmt.Errorf("%w (preostalo jos %s)", ErrPasswordTooYoung, preostalo)
+		}
+		if input.NewPassword != input.ConfirmPassword {
+			return nil, ErrPasswordMismatch
+		}
+		if err := ValidateStrongPassword(input.NewPassword); err != nil {
+			return nil, err
+		}
+		hashed, err := bcrypt.GenerateFromPassword([]byte(input.NewPassword), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, fmt.Errorf("greska pri hesiranju nove lozinke: %w", err)
+		}
+		newPasswordHash = string(hashed)
+	}
+
+	// Provera koda sa emaila (dokaz da korisnik poseduje pristup emailu naloga)
+	tokenDoc, err := s.repo.FindValidToken(ctx, email, model.TokenAccountUpdate)
+	if err != nil {
+		return nil, ErrInvalidToken
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(tokenDoc.CodeHash), []byte(code)); err != nil {
+		return nil, ErrInvalidToken
+	}
+
+	_ = s.repo.MarkTokenUsed(ctx, tokenDoc.ID)
+
+	if wantsPasswordChange {
+		if err := s.repo.UpdatePassword(ctx, email, newPasswordHash); err != nil {
+			return nil, err
+		}
+	}
+
+	return s.repo.UpdateUserProfile(ctx, email, firstName, lastName)
+}
+
 // generateNumericCode generise siguran nasumicni niz cifara date duzine
 func generateNumericCode(length int) (string, error) {
 	code := make([]byte, length)
@@ -333,4 +593,13 @@ func generateNumericCode(length int) (string, error) {
 		code[i] = byte('0' + num.Int64())
 	}
 	return string(code), nil
+}
+
+// generateSecureHexToken generise kriptografski siguran hex token za kratkotrajni link
+func generateSecureHexToken(numBytes int) (string, error) {
+	b := make([]byte, numBytes)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
