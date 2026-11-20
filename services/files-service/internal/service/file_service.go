@@ -7,21 +7,24 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"path/filepath"
 	"strings"
 
+	"github.com/mvxv0/secure-file-storage/services/files-service/internal/client"
 	"github.com/mvxv0/secure-file-storage/services/files-service/internal/model"
 	"github.com/mvxv0/secure-file-storage/services/files-service/internal/repository"
 	"github.com/mvxv0/secure-file-storage/services/files-service/internal/storage"
 )
 
 var (
-	ErrInvalidFileName   = errors.New("naziv datoteke mora imati izmedju 1 i 150 karaktera i ne sme sadrzati znakove: /, \\")
-	ErrEmptyFileContent  = errors.New("datoteka ne moze biti prazna (0 bajtova)")
-	ErrDisallowedFileExt = errors.New("tip datoteke nije dozvoljen (whitelisting zastita)")
-	ErrFileNotOwned      = errors.New("nemate pravo pristupa ili izmene ove datoteke")
-	ErrQuotaExceeded     = errors.New("prekoracena kvota skladista: nemate dovoljno slobodnog prostora")
+	ErrInvalidFileName         = errors.New("naziv datoteke mora imati izmedju 1 i 150 karaktera i ne sme sadrzati znakove: /, \\")
+	ErrEmptyFileContent        = errors.New("datoteka ne moze biti prazna (0 bajtova)")
+	ErrDisallowedFileExt       = errors.New("tip datoteke nije dozvoljen (whitelisting zastita)")
+	ErrFileNotOwned            = errors.New("nemate pravo pristupa ili izmene ove datoteke")
+	ErrQuotaExceeded           = errors.New("prekoracena kvota skladista: nemate dovoljno slobodnog prostora")
+	ErrUsersServiceUnavailable = errors.New("users-service trenutno nije dostupan za proveru kvote")
 )
 
 // Whitelist dozvoljenih ekstenzija datoteka  (provera tipa datoteke / whitelisting)
@@ -51,6 +54,7 @@ type FileService struct {
 	fileRepo     *repository.FileRepository
 	folderRepo   *repository.FolderRepository
 	store        storage.ObjectStore
+	quotaClient  client.QuotaClient
 	defaultQuota int64
 }
 
@@ -58,12 +62,14 @@ func NewFileService(
 	fileRepo *repository.FileRepository,
 	folderRepo *repository.FolderRepository,
 	store storage.ObjectStore,
+	quotaClient client.QuotaClient,
 	defaultQuota int64,
 ) *FileService {
 	return &FileService{
 		fileRepo:     fileRepo,
 		folderRepo:   folderRepo,
 		store:        store,
+		quotaClient:  quotaClient,
 		defaultQuota: defaultQuota,
 	}
 }
@@ -179,6 +185,9 @@ func (s *FileService) UploadFile(ctx context.Context, ownerID string, input Uplo
 		return nil, false, err
 	}
 
+	// 4. Sinhrono azuriranje zauzeca kvote kod users-service-a
+	s.syncQuotaUsed(ctx, ownerID)
+
 	return fileMeta, false, nil
 }
 
@@ -240,6 +249,9 @@ func (s *FileService) replaceWithNewVersion(
 		return nil, err
 	}
 
+	// 4. Sinhrono azuriranje zauzeca kvote kod users-service-a
+	s.syncQuotaUsed(ctx, ownerID)
+
 	return existing, nil
 }
 
@@ -248,10 +260,36 @@ func (s *FileService) checkQuota(ctx context.Context, ownerID string, additional
 	if err != nil {
 		return err
 	}
-	if usedBytes+additionalBytes > s.defaultQuota {
+
+	quotaLimit := s.defaultQuota
+	if s.quotaClient != nil {
+		quotaInfo, err := s.quotaClient.GetUserQuota(ctx, ownerID)
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrUsersServiceUnavailable, err)
+		}
+		if quotaInfo.QuotaLimit > 0 {
+			quotaLimit = quotaInfo.QuotaLimit
+		}
+	}
+
+	if usedBytes+additionalBytes > quotaLimit {
 		return ErrQuotaExceeded
 	}
 	return nil
+}
+
+func (s *FileService) syncQuotaUsed(ctx context.Context, ownerID string) {
+	if s.quotaClient == nil {
+		return
+	}
+	totalUsed, err := s.fileRepo.GetTotalUsedBytes(ctx, ownerID)
+	if err != nil {
+		log.Printf("[FILES-SERVICE] Upozorenje: neuspesno racunanje zauzeca za korisnika %s: %v", ownerID, err)
+		return
+	}
+	if err := s.quotaClient.UpdateQuotaUsed(ctx, ownerID, totalUsed); err != nil {
+		log.Printf("[FILES-SERVICE] Upozorenje: neuspesno sinhronizovanje kvote sa users-service za korisnika %s: %v", ownerID, err)
+	}
 }
 
 // GetTotalStorageUsage vraca ukupno zauzece skladista za datog korisnika
