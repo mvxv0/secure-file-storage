@@ -1,0 +1,120 @@
+<div class="auth-container">
+  <div class="auth-card">
+    <div class="auth-header">
+      <h2>Secure File Storage</h2>
+      <p class="subtitle">Google Drive klon (SOA / NoSQL / IB)</p>
+    </div>
+
+    <!-- Tabovi -->
+    <div class="tab-header">
+      <button [class.active]="currentTab() === 'login'" (click)="setTab('login')">Prijava</button>
+      <button [class.active]="currentTab() === 'register'" (click)="setTab('register')">Registracija</button>
+      <button [class.active]="currentTab() === 'verify'" (click)="setTab('verify')">Potvrda koda</button>
+    </div>
+
+    <!-- Alert poruke -->
+    <div *ngIf="errorMessage()" class="alert alert-error">
+      {{ errorMessage() }}
+    </div>
+    <div *ngIf="successMessage()" class="alert alert-success">
+      {{ successMessage() }}
+    </div>
+
+    <!-- TAB 1: LOGIN -->
+    <div *ngIf="currentTab() === 'login'" class="form-container">
+      <form (ngSubmit)="onLoginSubmit()">
+        <!-- KORAK 1: Email i lozinka -->
+        <div *ngIf="loginStep() === 'credentials'">
+          <div class="form-group">
+            <label for="loginEmail">Email adresa</label>
+            <input id="loginEmail" type="email" [(ngModel)]="loginEmail" name="loginEmail" placeholder="primer@student.uns.ac.rs" required />
+          </div>
+
+          <div class="form-group">
+            <label for="loginPassword">Lozinka</label>
+            <input id="loginPassword" type="password" [(ngModel)]="loginPassword" name="loginPassword" placeholder="••••••••" required />
+          </div>
+
+          <button type="submit" class="btn btn-primary" [disabled]="isLoading()">
+            {{ isLoading() ? 'Proveravam...' : 'Nastavi na OTP kod' }}
+          </button>
+        </div>
+
+        <!-- KORAK 2: 2FA OTP KOD -->
+        <div *ngIf="loginStep() === 'otp'">
+          <p class="info-text">
+            Unesite 6-cifreni kod poslat na adresu <strong>{{ loginEmail }}</strong>:
+          </p>
+          <div class="form-group">
+            <label for="loginOtpCode">Jednokratni kod (OTP)</label>
+            <input id="loginOtpCode" type="text" maxlength="6" [(ngModel)]="loginOtpCode" name="loginOtpCode" placeholder="123456" autofocus required />
+          </div>
+
+          <button type="submit" class="btn btn-success" [disabled]="isLoading() || loginOtpCode.length < 6">
+            {{ isLoading() ? 'Prijavljujem...' : 'Potvrdi i prijavi se' }}
+          </button>
+
+          <button type="button" class="btn btn-secondary" (click)="resetLoginStep()">
+            Nazad na lozinku
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- TAB 2: REGISTRACIJA -->
+    <div *ngIf="currentTab() === 'register'" class="form-container">
+      <form (ngSubmit)="onRegisterSubmit()">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="regFirstName">Ime</label>
+            <input id="regFirstName" type="text" [(ngModel)]="regFirstName" name="regFirstName" placeholder="Petar" required />
+          </div>
+          <div class="form-group">
+            <label for="regLastName">Prezime</label>
+            <input id="regLastName" type="text" [(ngModel)]="regLastName" name="regLastName" placeholder="Petrovic" required />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="regEmail">Email adresa</label>
+          <input id="regEmail" type="email" [(ngModel)]="regEmail" name="regEmail" placeholder="petar@example.com" required />
+        </div>
+
+        <div class="form-group">
+          <label for="regPassword">Lozinka</label>
+          <input id="regPassword" type="password" [(ngModel)]="regPassword" name="regPassword" placeholder="Min. 8 karaktera, veliko slovo, broj, znak" required />
+          <small class="hint">Zahtev: minimum 8 karaktera, bar jedno veliko i malo slovo, broj i specijalan znak.</small>
+        </div>
+
+        <div class="form-group">
+          <label for="regConfirmPassword">Ponovite lozinku</label>
+          <input id="regConfirmPassword" type="password" [(ngModel)]="regConfirmPassword" name="regConfirmPassword" placeholder="••••••••" required />
+        </div>
+
+        <button type="submit" class="btn btn-primary" [disabled]="isLoading()">
+          {{ isLoading() ? 'Registrujem...' : 'Kreiraj nalog' }}
+        </button>
+      </form>
+    </div>
+
+    <!-- TAB 3: POTVRDA NALOGA -->
+    <div *ngIf="currentTab() === 'verify'" class="form-container">
+      <form (ngSubmit)="onVerifySubmit()">
+        <div class="form-group">
+          <label for="verifyEmail">Email adresa naloga</label>
+          <input id="verifyEmail" type="email" [(ngModel)]="verifyEmail" name="verifyEmail" placeholder="petar@example.com" required />
+        </div>
+
+        <div class="form-group">
+          <label for="verifyCode">Verifikacioni kod iz mejla</label>
+          <input id="verifyCode" type="text" maxlength="6" [(ngModel)]="verifyCode" name="verifyCode" placeholder="123456" required />
+        </div>
+
+        <button type="submit" class="btn btn-success" [disabled]="isLoading() || verifyCode.length < 6">
+          {{ isLoading() ? 'Potvrdjujem...' : 'Aktiviraj nalog' }}
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+

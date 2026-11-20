@@ -100,9 +100,13 @@ func (h *FolderHandler) GetFolderContents(w http.ResponseWriter, r *http.Request
 	}
 
 	files := make([]model.FileMetadata, 0)
+	var quotaUsed int64 = 0
 	if h.fileService != nil {
 		if fList, fErr := h.fileService.GetFilesInFolder(r.Context(), claims.UserID, folderID); fErr == nil {
 			files = fList
+		}
+		if used, uErr := h.fileService.GetTotalStorageUsage(r.Context(), claims.UserID); uErr == nil {
+			quotaUsed = used
 		}
 	}
 
@@ -110,5 +114,6 @@ func (h *FolderHandler) GetFolderContents(w http.ResponseWriter, r *http.Request
 		"currentFolderId": folderID,
 		"folders":         folders,
 		"files":           files,
+		"quotaUsed":       quotaUsed,
 	})
 }

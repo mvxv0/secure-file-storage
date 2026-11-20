@@ -1,0 +1,128 @@
+<div class="drive-layout">
+  <!-- Gornja navigaciona traka (Header) -->
+  <header class="drive-header">
+    <div class="logo">
+      <span class="logo-icon">📁</span>
+      <h1>Secure File Storage</h1>
+    </div>
+
+    <div class="header-right">
+      <div class="user-quota" *ngIf="user()">
+        <span class="quota-label">Skladiste:</span>
+        <span class="quota-val">{{ formatQuota(user()) }}</span>
+      </div>
+
+      <div class="user-profile" *ngIf="user()">
+        <span class="user-name">{{ user()?.firstName }} {{ user()?.lastName }}</span>
+        <span class="user-role">({{ user()?.role }})</span>
+      </div>
+
+      <button class="btn btn-outline" (click)="logout()">Odjavi se</button>
+    </div>
+  </header>
+
+  <!-- Glavni radni prostor -->
+  <main class="drive-main">
+    <!-- Akciona traka (Toolbar) -->
+    <div class="toolbar">
+      <div class="actions">
+        <button class="btn btn-primary" (click)="openCreateFolderModal()">
+          + Novi folder
+        </button>
+
+        <label class="btn btn-secondary file-upload-btn">
+          <span>⬆ Otpremi fajl</span>
+          <input type="file" (change)="onFileSelected($event)" style="display: none;" />
+        </label>
+      </div>
+
+      <!-- Breadcrumbs navigacija -->
+      <nav class="breadcrumbs">
+        <span *ngFor="let crumb of breadcrumbs(); let i = index; let last = last">
+          <a *ngIf="!last" (click)="goToBreadcrumb(i)">{{ crumb.name }}</a>
+          <span *ngIf="last" class="current-crumb">{{ crumb.name }}</span>
+          <span *ngIf="!last" class="separator">/</span>
+        </span>
+      </nav>
+    </div>
+
+    <!-- Obavestenja -->
+    <div *ngIf="errorMessage()" class="alert alert-error">
+      {{ errorMessage() }}
+    </div>
+    <div *ngIf="successMessage()" class="alert alert-success">
+      {{ successMessage() }}
+    </div>
+
+    <!-- Tabela sadrzaja foldera -->
+    <div class="content-table-wrapper">
+      <table class="content-table">
+        <thead>
+          <tr>
+            <th style="width: 40px;"></th>
+            <th>Naziv</th>
+            <th style="width: 120px;">Velicina</th>
+            <th style="width: 180px;">Poslednja izmena</th>
+            <th style="width: 140px; text-align: right;">Akcije</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Prazan folder poruka -->
+          <tr *ngIf="folders().length === 0 && files().length === 0 && !isLoading()">
+            <td colspan="5" class="empty-state">
+              Ovaj folder je prazan. Kreirajte novi folder ili otpremite fajl.
+            </td>
+          </tr>
+
+          <!-- Lista foldera -->
+          <tr *ngFor="let f of folders()" class="row-folder" (dblclick)="openFolder(f)">
+            <td class="icon-cell">📁</td>
+            <td class="name-cell">
+              <a (click)="openFolder(f)">{{ f.name }}</a>
+            </td>
+            <td>—</td>
+            <td>{{ f.updatedAt | date:'dd.MM.yyyy HH:mm' }}</td>
+            <td class="action-cell">
+              <button class="btn-sm" (click)="openFolder(f)">Otvori</button>
+            </td>
+          </tr>
+
+          <!-- Lista fajlova -->
+          <tr *ngFor="let file of files()" class="row-file">
+            <td class="icon-cell">📄</td>
+            <td class="name-cell">{{ file.name }}</td>
+            <td>{{ formatSize(file.size) }}</td>
+            <td>{{ file.updatedAt | date:'dd.MM.yyyy HH:mm' }}</td>
+            <td class="action-cell">
+              <button class="btn-sm btn-download" (click)="downloadFile(file)">Preuzmi</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<!-- Modal za kreiranje novog foldera -->
+<div class="modal-backdrop" *ngIf="isCreateFolderOpen()" (click)="closeCreateFolderModal()">
+  <div class="modal-card" (click)="$event.stopPropagation()">
+    <h3>Novi folder</h3>
+    <div class="form-group">
+      <label for="folderName">Naziv foldera</label>
+      <input
+        id="folderName"
+        type="text"
+        [(ngModel)]="newFolderName"
+        placeholder="npr. Predmet SOA"
+        (keyup.enter)="createFolder()"
+        autofocus
+      />
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" (click)="closeCreateFolderModal()">Otkazi</button>
+      <button class="btn btn-primary" [disabled]="!newFolderName.trim()" (click)="createFolder()">Kreiraj</button>
+    </div>
+  </div>
+</div>
+
