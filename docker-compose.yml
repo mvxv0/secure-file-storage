@@ -81,6 +81,7 @@ services:
       FILES_SERVICE_PORT: "8082"
       MONGO_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/?authSource=admin
       FILES_STORAGE_DIR: /data/uploads
+      USERS_SERVICE_URL: http://users-service:8081
     ports:
       - "8082:8082"
     volumes:
@@ -88,6 +89,8 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+      users-service:
+        condition: service_started
 
   sharing-service:
     <<: *go-service

@@ -39,6 +39,7 @@ func main() {
 	userRepo := repository.NewUserRepository(mongoDB.DB)
 	authService := service.NewAuthService(userRepo, mailClient, cfg)
 	authHandler := handler.NewAuthHandler(authService)
+	internalHandler := handler.NewInternalHandler(userRepo)
 
 	mux := http.NewServeMux()
 
@@ -73,6 +74,10 @@ func main() {
 	mux.HandleFunc("POST /api/auth/login", authHandler.Login)
 	mux.HandleFunc("POST /api/auth/verify-otp", authHandler.VerifyOTP)
 	mux.HandleFunc("POST /api/auth/logout", authHandler.Logout)
+
+	// interne rute za sinhronu komunikaciju sa drugim mikroservisima (zahtev 2.5)
+	mux.HandleFunc("GET /internal/users/{id}/quota", internalHandler.GetUserQuota)
+	mux.HandleFunc("PUT /internal/users/{id}/quota-used", internalHandler.UpdateUserQuotaUsed)
 
 	// pokretanje http servera za users-service na portu 8081
 	server := &http.Server{
