@@ -1,0 +1,18 @@
+# build context je root repozitorijuma (zbog go.work i common modula),
+# pa iskljucujemo sve sto nije potrebno za build go servisa
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+frontend
+k8s
+docs
+**/uploads
+**/node_modules
+**/*.log
+**/tmp
+**/bin
+**/Dockerfile
+docker-compose*.yml
+

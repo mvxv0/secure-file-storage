@@ -1,4 +1,21 @@
+# pokretanje celog sistema: docker compose up -d --build
+# gasenje:                  docker compose down        (podaci ostaju u volume-ima)
+# reset baza i fajlova:     docker compose down -v
+#
+# unutar docker mreze servisi se vide po imenu servisa (npr. mongo:27017, users-service:8081),
+# zato se adrese ovde postavljaju eksplicitno i imaju prednost nad vrednostima iz .env fajla
+# (.env se i dalje koristi za lokalno pokretanje sa `go run`).
+
+x-go-service: &go-service
+  restart: unless-stopped
+  env_file:
+    - .env
+  networks:
+    - backend
+
 services:
+  # ---------------- baze i infrastruktura ----------------
+
   # baza za users i files metapodatke
   mongo:
     image: mongo:7
@@ -11,6 +28,14 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
     volumes:
       - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - backend
 
   # mailhog za hvatanje otp i verifikacionih mejlova (web ui na http://localhost:8025)
   mailhog:
@@ -18,26 +43,113 @@ services:
     container_name: gdrive-mailhog
     restart: unless-stopped
     ports:
-      - "1025:1025"   # smtp port
-      - "8025:8025"   # web dashboard
+      - "1025:1025" # smtp port
+      - "8025:8025" # web dashboard
+    networks:
+      - backend
 
-  # minio zakomentarisan dok ne dodjemo do files servisa (kad resimo tag ili pitamo asistenta)
-  # minio:
-  #   image: quay.io/minio/minio
-  #   container_name: gdrive-minio
-  #   restart: unless-stopped
-  #   command: server /data --console-address ":9001"
-  #   ports:
-  #     - "9000:9000"
-  #     - "9001:9001"
-  #   environment:
-  #     MINIO_ROOT_USER: ${MINIO_USER}
-  #     MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
-  #   volumes:
-  #     - minio_data:/data
+  # neo4j (sharing) i cassandra (notifications) dodajemo kad se implementiraju ti servisi
 
-  # neo4j i cassandra dodajemo za sharing i notifications
+  # ---------------- mikroservisi ----------------
+
+  users-service:
+    <<: *go-service
+    build:
+      context: .
+      dockerfile: services/users-service/Dockerfile
+    container_name: gdrive-users-service
+    environment:
+      USERS_SERVICE_PORT: "8081"
+      MONGO_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/?authSource=admin
+      SMTP_HOST: mailhog
+      SMTP_PORT: "1025"
+    ports:
+      - "8081:8081"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+
+  files-service:
+    <<: *go-service
+    build:
+      context: .
+      dockerfile: services/files-service/Dockerfile
+    container_name: gdrive-files-service
+    environment:
+      FILES_SERVICE_PORT: "8082"
+      MONGO_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/?authSource=admin
+      FILES_STORAGE_DIR: /data/uploads
+    ports:
+      - "8082:8082"
+    volumes:
+      - files_data:/data/uploads
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  sharing-service:
+    <<: *go-service
+    build:
+      context: .
+      dockerfile: services/sharing-service/Dockerfile
+    container_name: gdrive-sharing-service
+    environment:
+      SHARING_SERVICE_PORT: "8083"
+    ports:
+      - "8083:8083"
+
+  notifications-service:
+    <<: *go-service
+    build:
+      context: .
+      dockerfile: services/notifications-service/Dockerfile
+    container_name: gdrive-notifications-service
+    environment:
+      NOTIFICATIONS_SERVICE_PORT: "8084"
+    ports:
+      - "8084:8084"
+
+  analytics-service:
+    <<: *go-service
+    build:
+      context: .
+      dockerfile: services/analytics-service/Dockerfile
+    container_name: gdrive-analytics-service
+    environment:
+      ANALYTICS_SERVICE_PORT: "8085"
+    ports:
+      - "8085:8085"
+
+  # ---------------- api gateway (jedina ulazna tacka za klijenta) ----------------
+
+  api-gateway:
+    <<: *go-service
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    container_name: gdrive-api-gateway
+    environment:
+      API_GATEWAY_PORT: "8080"
+      USERS_SERVICE_URL: http://users-service:8081
+      FILES_SERVICE_URL: http://files-service:8082
+      SHARING_SERVICE_URL: http://sharing-service:8083
+      NOTIFICATIONS_SERVICE_URL: http://notifications-service:8084
+      ANALYTICS_SERVICE_URL: http://analytics-service:8085
+    ports:
+      - "8080:8080"
+    depends_on:
+      - users-service
+      - files-service
+      - sharing-service
+      - notifications-service
+      - analytics-service
+
+networks:
+  backend:
+    name: gdrive-backend
 
 volumes:
   mongo_data:
-  # minio_data:
+  files_data:
