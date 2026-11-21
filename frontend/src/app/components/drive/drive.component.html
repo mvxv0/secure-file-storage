@@ -12,6 +12,13 @@
         <span class="quota-val">{{ formatQuota(user()) }}</span>
       </div>
 
+      <button class="btn btn-notifications" (click)="toggleNotificationsModal()" title="Pregled notifikacija">
+        <span>🔔 Notifikacije</span>
+        <span class="notif-badge" *ngIf="unreadNotificationsCount() > 0">
+          {{ unreadNotificationsCount() }}
+        </span>
+      </button>
+
       <div class="user-profile" *ngIf="user()">
         <span class="user-name">{{ user()?.firstName }} {{ user()?.lastName }}</span>
         <span class="user-role">({{ user()?.role }})</span>
@@ -125,4 +132,45 @@
     </div>
   </div>
 </div>
+
+<!-- Modal za pregled notifikacija (zahtev 1.7) -->
+<div class="modal-backdrop" *ngIf="isNotificationsOpen()" (click)="closeNotificationsModal()">
+  <div class="modal-card modal-notifications" (click)="$event.stopPropagation()">
+    <div class="notif-modal-header">
+      <h3>🔔 Moje notifikacije</h3>
+      <button class="btn-sm" (click)="loadNotifications()">⟳ Osveži</button>
+    </div>
+
+    <div *ngIf="isNotificationsLoading()" class="notif-empty">
+      Učitavanje notifikacija iz Cassandra baze...
+    </div>
+
+    <div *ngIf="!isNotificationsLoading() && notifications().length === 0" class="notif-empty">
+      Nemate nijednu notifikaciju.
+    </div>
+
+    <div class="notif-list" *ngIf="!isNotificationsLoading() && notifications().length > 0">
+      <div
+        *ngFor="let n of notifications()"
+        class="notif-item"
+        [class.notif-unread]="!n.isRead"
+      >
+        <div class="notif-icon">{{ getNotificationIcon(n.type) }}</div>
+        <div class="notif-body">
+          <div class="notif-top">
+            <span class="notif-resource" *ngIf="n.resourceName">{{ n.resourceName }}</span>
+            <span class="notif-type-tag">{{ n.type }}</span>
+          </div>
+          <p class="notif-message">{{ n.message }}</p>
+          <span class="notif-time">{{ n.createdAt | date:'dd.MM.yyyy HH:mm' }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary" (click)="closeNotificationsModal()">Zatvori</button>
+    </div>
+  </div>
+</div>
+
 
