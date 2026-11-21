@@ -48,7 +48,29 @@ services:
     networks:
       - backend
 
-  # neo4j (sharing) i cassandra (notifications) dodajemo kad se implementiraju ti servisi
+  # cassandra wide-column baza za notifications-service 
+  cassandra:
+    image: cassandra:4.1
+    container_name: gdrive-cassandra
+    restart: unless-stopped
+    ports:
+      - "9042:9042"
+    environment:
+      CASSANDRA_CLUSTER_NAME: "GDriveNotificationsCluster"
+      MAX_HEAP_SIZE: "512M"
+      HEAP_NEWSIZE: "100M"
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe keyspaces'"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+    networks:
+      - backend
+
+  # neo4j (sharing) dodajemo kad se implementira taj servis
 
   # ---------------- mikroservisi ----------------
 
@@ -108,8 +130,13 @@ services:
     container_name: gdrive-notifications-service
     environment:
       NOTIFICATIONS_SERVICE_PORT: "8084"
+      CASSANDRA_HOSTS: cassandra:9042
+      CASSANDRA_KEYSPACE: ${CASSANDRA_KEYSPACE:-notifications_ks}
     ports:
       - "8084:8084"
+    depends_on:
+      cassandra:
+        condition: service_started
 
   analytics-service:
     <<: *go-service
@@ -153,3 +180,4 @@ networks:
 volumes:
   mongo_data:
   files_data:
+  cassandra_data:
