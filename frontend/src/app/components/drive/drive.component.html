@@ -12,6 +12,14 @@
         <span class="quota-val">{{ formatQuota(user()) }}</span>
       </div>
 
+      <button class="btn btn-outline btn-quota" *ngIf="user()" (click)="openQuotaModal()" title="Zatrazi povecanje kvote">
+        + Kvota
+      </button>
+
+      <button class="btn btn-admin" *ngIf="user()?.role === 'A'" (click)="openAdminPanel()">
+        ⚙ Admin panel
+      </button>
+
       <button class="btn btn-notifications" (click)="toggleNotificationsModal()" title="Pregled notifikacija">
         <span>🔔 Notifikacije</span>
         <span class="notif-badge" *ngIf="unreadNotificationsCount() > 0">
@@ -169,6 +177,123 @@
 
     <div class="modal-actions">
       <button class="btn btn-primary" (click)="closeNotificationsModal()">Zatvori</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal za zahtev za povecanje kvote (RK) -->
+<div class="modal-backdrop" *ngIf="isQuotaModalOpen()" (click)="closeQuotaModal()">
+  <div class="modal-card modal-quota" (click)="$event.stopPropagation()">
+    <h3>Zahtev za povećanje kvote</h3>
+    <p class="quota-current-info" *ngIf="user()">
+      Trenutna kvota: <strong>{{ formatQuota(user()) }}</strong>
+    </p>
+
+    <div *ngIf="quotaModalError()" class="alert alert-error">{{ quotaModalError() }}</div>
+    <div *ngIf="quotaModalSuccess()" class="alert alert-success">{{ quotaModalSuccess() }}</div>
+
+    <div class="form-group">
+      <label for="requestedQuotaMB">Željena nova kvota (MB)</label>
+      <input id="requestedQuotaMB" type="number" min="1" [(ngModel)]="requestedQuotaMB" />
+    </div>
+
+    <div class="form-group" style="margin-top: 10px;">
+      <label for="quotaReason">Obrazloženje (opciono)</label>
+      <input id="quotaReason" type="text" [(ngModel)]="quotaReason" placeholder="npr. Potreban prostor za projekte" />
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" (click)="closeQuotaModal()">Zatvori</button>
+      <button class="btn btn-primary" (click)="submitQuotaRequest()">Pošalji zahtev</button>
+    </div>
+
+    <div class="quota-history" *ngIf="myQuotaRequests().length > 0">
+      <h4>Moji zahtevi</h4>
+      <div class="quota-req-row" *ngFor="let r of myQuotaRequests()">
+        <div>
+          <strong>{{ formatSize(r.currentQuota) }} → {{ formatSize(r.requestedQuota) }}</strong>
+          <div class="quota-req-meta">{{ r.createdAt | date:'dd.MM.yyyy HH:mm' }} <span *ngIf="r.reason">· {{ r.reason }}</span></div>
+        </div>
+        <span class="status-pill" [ngClass]="'status-' + r.status.toLowerCase()">{{ r.status }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Admin panel modal (Pregled korisnika i zahteva za kvotu) -->
+<div class="modal-backdrop" *ngIf="isAdminPanelOpen()" (click)="closeAdminPanel()">
+  <div class="modal-card modal-admin" (click)="$event.stopPropagation()">
+    <div class="notif-modal-header">
+      <h3>⚙ Admin panel — Kvote skladišta</h3>
+      <button class="btn-sm" (click)="loadAdminData()">⟳ Osveži</button>
+    </div>
+
+    <div class="admin-tabs">
+      <button class="admin-tab" [class.active]="adminTab() === 'requests'" (click)="adminTab.set('requests')">
+        Zahtevi ({{ adminQuotaRequests().length }})
+      </button>
+      <button class="admin-tab" [class.active]="adminTab() === 'users'" (click)="adminTab.set('users')">
+        Svi korisnici ({{ adminUsers().length }})
+      </button>
+    </div>
+
+    <!-- Tab 1: Zahtevi za povecanje kvote -->
+    <div *ngIf="adminTab() === 'requests'" class="admin-table-wrap">
+      <div *ngIf="adminQuotaRequests().length === 0" class="notif-empty">
+        Nema pristiglih zahteva za povećanje kvote.
+      </div>
+      <table class="content-table" *ngIf="adminQuotaRequests().length > 0">
+        <thead>
+          <tr>
+            <th>Korisnik</th>
+            <th>Trenutna → Tražena</th>
+            <th>Razlog</th>
+            <th>Status</th>
+            <th style="text-align: right;">Akcija</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let r of adminQuotaRequests()">
+            <td>{{ r.userEmail }}</td>
+            <td>{{ formatSize(r.currentQuota) }} → <strong>{{ formatSize(r.requestedQuota) }}</strong></td>
+            <td>{{ r.reason || '—' }}</td>
+            <td><span class="status-pill" [ngClass]="'status-' + r.status.toLowerCase()">{{ r.status }}</span></td>
+            <td style="text-align: right; white-space: nowrap;">
+              <ng-container *ngIf="r.status === 'PENDING'; else resolvedLabel">
+                <button class="btn-sm btn-approve" (click)="approveQuotaRequest(r)">Odobri</button>
+                <button class="btn-sm btn-reject" (click)="rejectQuotaRequest(r)">Odbij</button>
+              </ng-container>
+              <ng-template #resolvedLabel>—</ng-template>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Tab 2: Svi korisnici sa kvotom i zauzecem -->
+    <div *ngIf="adminTab() === 'users'" class="admin-table-wrap">
+      <table class="content-table">
+        <thead>
+          <tr>
+            <th>Korisnik</th>
+            <th>Email</th>
+            <th>Uloga</th>
+            <th>Zauzeće / Kvota</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let u of adminUsers()">
+            <td>{{ u.firstName }} {{ u.lastName }}</td>
+            <td>{{ u.email }}</td>
+            <td>{{ u.role }}</td>
+            <td><strong>{{ formatSize(u.quotaUsed) }}</strong> / {{ formatSize(u.quotaLimit) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary" (click)="closeAdminPanel()">Zatvori</button>
     </div>
   </div>
 </div>

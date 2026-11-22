@@ -399,3 +399,128 @@
 }
 
 
+
+.btn-quota {
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
+.btn-admin {
+  background-color: #202124;
+  color: #ffffff;
+  border: none;
+  font-size: 13px;
+}
+
+.btn-admin:hover {
+  background-color: #3c4043;
+}
+
+.modal-quota {
+  max-width: 480px;
+}
+
+.modal-admin {
+  max-width: 780px;
+}
+
+.quota-current-info {
+  margin-top: 0;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: #5f6368;
+}
+
+.quota-history {
+  margin-top: 20px;
+  border-top: 1px solid #e0e0e0;
+  padding-top: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.quota-history h4 {
+  margin: 0 0 10px 0;
+  font-size: 13px;
+  color: #3c4043;
+}
+
+.quota-req-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.quota-req-meta {
+  font-size: 11px;
+  color: #5f6368;
+  margin-top: 2px;
+}
+
+.status-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 12px;
+}
+
+.status-pending {
+  background: #fef7e0;
+  color: #b06000;
+}
+
+.status-approved {
+  background: #e6f4ea;
+  color: #137333;
+}
+
+.status-rejected {
+  background: #fce8e6;
+  color: #c5221f;
+}
+
+.admin-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #e0e0e0;
+  padding-bottom: 8px;
+}
+
+.admin-tab {
+  background: transparent;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.admin-tab.active {
+  background: #1a73e8;
+  color: #ffffff;
+  border-color: #1a73e8;
+}
+
+.admin-table-wrap {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.btn-approve {
+  color: #137333;
+  border-color: #ceead6;
+  background: #e6f4ea;
+  margin-right: 6px;
+}
+
+.btn-reject {
+  color: #c5221f;
+  border-color: #fad2cf;
+  background: #fce8e6;
+}

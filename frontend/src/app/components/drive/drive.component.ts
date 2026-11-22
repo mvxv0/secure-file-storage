@@ -5,7 +5,8 @@ import { AuthService } from '../../services/auth.service';
 import { FolderService } from '../../services/folder.service';
 import { FileService } from '../../services/file.service';
 import { NotificationService } from '../../services/notification.service';
-import { Folder, FileMetadata, User, NotificationItem } from '../../models/types';
+import { QuotaService } from '../../services/quota.service';
+import { Folder, FileMetadata, User, NotificationItem, QuotaRequest } from '../../models/types';
 
 interface BreadcrumbItem {
   id: string | null;
@@ -41,6 +42,20 @@ export class DriveComponent implements OnInit {
   isNotificationsOpen = signal<boolean>(false);
   isNotificationsLoading = signal<boolean>(false);
 
+  // Kvota skladista (RK zahtev + Admin panel)
+  isQuotaModalOpen = signal<boolean>(false);
+  myQuotaRequests = signal<QuotaRequest[]>([]);
+  requestedQuotaMB = 250;
+  quotaReason = '';
+  quotaModalError = signal<string | null>(null);
+  quotaModalSuccess = signal<string | null>(null);
+
+  isAdminPanelOpen = signal<boolean>(false);
+  adminTab = signal<'requests' | 'users'>('requests');
+  adminUsers = signal<User[]>([]);
+  adminQuotaRequests = signal<QuotaRequest[]>([]);
+  isAdminLoading = signal<boolean>(false);
+
   // Poruke i status
   errorMessage = signal<string | null>(null);
   successMessage = signal<string | null>(null);
@@ -50,13 +65,142 @@ export class DriveComponent implements OnInit {
     private authService: AuthService,
     private folderService: FolderService,
     private fileService: FileService,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private quotaService: QuotaService
   ) { }
 
   ngOnInit(): void {
     this.user.set(this.authService.currentUser());
+    this.refreshUserProfile();
     this.loadCurrentFolder();
     this.loadNotifications();
+  }
+
+  refreshUserProfile(): void {
+    this.quotaService.getProfile().subscribe({
+      next: (res) => {
+        if (res.success && res.data) {
+          this.user.set(res.data);
+          localStorage.setItem('auth_user', JSON.stringify(res.data));
+        }
+      }
+    });
+  }
+
+  // --- ZAHTEV ZA POVECANJE KVOTE (RK) ---
+  openQuotaModal(): void {
+    const currentMB = Math.round((this.user()?.quotaLimit || 104857600) / (1024 * 1024));
+    this.requestedQuotaMB = currentMB + 100;
+    this.quotaReason = '';
+    this.quotaModalError.set(null);
+    this.quotaModalSuccess.set(null);
+    this.isQuotaModalOpen.set(true);
+    this.loadMyQuotaRequests();
+  }
+
+  closeQuotaModal(): void {
+    this.isQuotaModalOpen.set(false);
+  }
+
+  loadMyQuotaRequests(): void {
+    this.quotaService.getMyQuotaRequests().subscribe({
+      next: (res) => {
+        if (res.success && res.data) {
+          this.myQuotaRequests.set(res.data);
+        }
+      }
+    });
+  }
+
+  submitQuotaRequest(): void {
+    this.quotaModalError.set(null);
+    this.quotaModalSuccess.set(null);
+    const bytes = Math.round(Number(this.requestedQuotaMB) * 1024 * 1024);
+    if (!bytes || bytes <= 0) {
+      this.quotaModalError.set('Unesite validnu vrednost u MB.');
+      return;
+    }
+
+    this.quotaService.submitQuotaRequest(bytes, this.quotaReason).subscribe({
+      next: (res) => {
+        if (res.success) {
+          this.quotaModalSuccess.set(res.message || 'Zahtev je uspesno podnet.');
+          this.quotaReason = '';
+          this.loadMyQuotaRequests();
+        }
+      },
+      error: (err) => {
+        this.quotaModalError.set(err.error?.error || 'Greska pri podnosenju zahteva.');
+      }
+    });
+  }
+
+  // --- ADMIN PANEL (Pregled korisnika i odobravanje/odbijanje zahteva) ---
+  openAdminPanel(): void {
+    this.isAdminPanelOpen.set(true);
+    this.loadAdminData();
+  }
+
+  closeAdminPanel(): void {
+    this.isAdminPanelOpen.set(false);
+  }
+
+  loadAdminData(): void {
+    this.isAdminLoading.set(true);
+    this.quotaService.getAllQuotaRequests().subscribe({
+      next: (res) => {
+        this.isAdminLoading.set(false);
+        if (res.success && res.data) {
+          this.adminQuotaRequests.set(res.data);
+        }
+      },
+      error: () => this.isAdminLoading.set(false)
+    });
+
+    this.quotaService.getAllUsers().subscribe({
+      next: (res) => {
+        if (res.success && res.data) {
+          this.adminUsers.set(res.data);
+        }
+      }
+    });
+  }
+
+  approveQuotaRequest(req: QuotaRequest): void {
+    this.quotaService.approveQuotaRequest(req.id).subscribe({
+      next: (res) => {
+        if (res.success) {
+          this.successMessage.set(`Zahtev za ${req.userEmail} je odobren!`);
+          setTimeout(() => this.successMessage.set(null), 3500);
+          this.loadAdminData();
+          this.refreshUserProfile();
+        }
+      },
+      error: (err) => {
+        this.errorMessage.set(err.error?.error || 'Greska pri odobravanju zahteva.');
+        setTimeout(() => this.errorMessage.set(null), 4000);
+      }
+    });
+  }
+
+  rejectQuotaRequest(req: QuotaRequest): void {
+    this.quotaService.rejectQuotaRequest(req.id).subscribe({
+      next: (res) => {
+        if (res.success) {
+          this.successMessage.set(`Zahtev za ${req.userEmail} je odbijen.`);
+          setTimeout(() => this.successMessage.set(null), 3500);
+          this.loadAdminData();
+        }
+      },
+      error: (err) => {
+        this.errorMessage.set(err.error?.error || 'Greska pri odbijanju zahteva.');
+        setTimeout(() => this.errorMessage.set(null), 4000);
+      }
+    });
+  }
+
+  pendingRequestsCount(): number {
+    return this.adminQuotaRequests().filter(r => r.status === 'PENDING').length;
   }
 
   loadNotifications(markReadAfterLoad = false): void {
