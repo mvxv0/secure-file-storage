@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/gocql/gocql"
@@ -13,6 +14,7 @@ import (
 var ErrDatabaseNotConnected = errors.New("cassandra baza podataka trenutno nije povezana")
 
 type NotificationRepository struct {
+	mu      sync.RWMutex
 	session *gocql.Session
 }
 
@@ -21,13 +23,26 @@ func NewNotificationRepository(session *gocql.Session) *NotificationRepository {
 }
 
 func (r *NotificationRepository) SetSession(session *gocql.Session) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.session = session
+}
+
+func (r *NotificationRepository) getSession() (*gocql.Session, error) {
+	r.mu.RLock()
+	session := r.session
+	r.mu.RUnlock()
+	if session == nil || session.Closed() {
+		return nil, ErrDatabaseNotConnected
+	}
+	return session, nil
 }
 
 // GetByUserID dobavlja sve notifikacije za datog korisnika iz Cassandre (sortirane po created_at DESC)
 func (r *NotificationRepository) GetByUserID(ctx context.Context, userID string) ([]model.Notification, error) {
-	if r.session == nil || r.session.Closed() {
-		return nil, ErrDatabaseNotConnected
+	session, err := r.getSession()
+	if err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -35,7 +50,7 @@ func (r *NotificationRepository) GetByUserID(ctx context.Context, userID string)
 		FROM notifications_by_user
 		WHERE user_id = ?`
 
-	iter := r.session.Query(query, userID).WithContext(ctx).Iter()
+	iter := session.Query(query, userID).WithContext(ctx).Iter()
 
 	notifications := make([]model.Notification, 0)
 	var n model.Notification
@@ -53,8 +68,9 @@ func (r *NotificationRepository) GetByUserID(ctx context.Context, userID string)
 
 // Create upisuje novu notifikaciju u Cassandra tabelu notifications_by_user
 func (r *NotificationRepository) Create(ctx context.Context, n *model.Notification) error {
-	if r.session == nil || r.session.Closed() {
-		return ErrDatabaseNotConnected
+	session, err := r.getSession()
+	if err != nil {
+		return err
 	}
 
 	if n.ID == "" {
@@ -68,7 +84,7 @@ func (r *NotificationRepository) Create(ctx context.Context, n *model.Notificati
 		INSERT INTO notifications_by_user (user_id, created_at, id, type, resource_id, resource_name, message, is_read)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 
-	return r.session.Query(
+	return session.Query(
 		query,
 		n.UserID,
 		n.CreatedAt,
@@ -83,8 +99,8 @@ func (r *NotificationRepository) Create(ctx context.Context, n *model.Notificati
 
 // SeedInitialNotifications popunjava Cassandra bazu inicijalnim notifikacijama za korisnika
 func (r *NotificationRepository) SeedInitialNotifications(ctx context.Context, userID string) ([]model.Notification, error) {
-	if r.session == nil || r.session.Closed() {
-		return nil, ErrDatabaseNotConnected
+	if _, err := r.getSession(); err != nil {
+		return nil, err
 	}
 
 	now := time.Now().UTC()
@@ -142,8 +158,9 @@ func (r *NotificationRepository) SeedInitialNotifications(ctx context.Context, u
 
 // MarkAllAsRead oznacava sve neprocitane notifikacije korisnika kao procitane (is_read = true) u Cassandri
 func (r *NotificationRepository) MarkAllAsRead(ctx context.Context, userID string) error {
-	if r.session == nil || r.session.Closed() {
-		return ErrDatabaseNotConnected
+	session, err := r.getSession()
+	if err != nil {
+		return err
 	}
 
 	notifications, err := r.GetByUserID(ctx, userID)
@@ -158,7 +175,7 @@ func (r *NotificationRepository) MarkAllAsRead(ctx context.Context, userID strin
 
 	for _, n := range notifications {
 		if !n.IsRead {
-			if err := r.session.Query(updateQuery, n.UserID, n.CreatedAt, n.ID).WithContext(ctx).Exec(); err != nil {
+			if err := session.Query(updateQuery, n.UserID, n.CreatedAt, n.ID).WithContext(ctx).Exec(); err != nil {
 				return fmt.Errorf("greska pri azuriranju is_read u Cassandri: %w", err)
 			}
 		}

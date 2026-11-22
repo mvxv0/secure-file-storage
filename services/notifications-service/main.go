@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/mvxv0/secure-file-storage/common/auth"
@@ -20,7 +21,10 @@ func main() {
 	// inicijalizacija repozitorijuma (povezuje se na Cassandru cim klaster postane dostupan)
 	notificationRepo := repository.NewNotificationRepository(nil)
 
-	var cassandraDB *database.CassandraDB
+	var (
+		dbMu        sync.RWMutex
+		cassandraDB *database.CassandraDB
+	)
 	connectCassandra := func() {
 		for {
 			db, err := database.Connect(cfg.CassandraHosts, cfg.CassandraKeyspace)
@@ -29,7 +33,9 @@ func main() {
 				time.Sleep(5 * time.Second)
 				continue
 			}
+			dbMu.Lock()
 			cassandraDB = db
+			dbMu.Unlock()
 			notificationRepo.SetSession(db.Session)
 			log.Printf("[NOTIFICATIONS-SERVICE] Uspesno povezan na Cassandra klaster (%s)", cfg.CassandraHosts)
 			return
@@ -39,8 +45,11 @@ func main() {
 	// pokrecemo povezivanje u pozadini kako servis ne bi pao dok se Cassandra podize u Dockeru
 	go connectCassandra()
 	defer func() {
-		if cassandraDB != nil {
-			cassandraDB.Close()
+		dbMu.RLock()
+		db := cassandraDB
+		dbMu.RUnlock()
+		if db != nil {
+			db.Close()
 		}
 	}()
 
@@ -50,8 +59,12 @@ func main() {
 	mux := http.NewServeMux()
 
 	healthHandler := func(w http.ResponseWriter, r *http.Request) {
+		dbMu.RLock()
+		db := cassandraDB
+		dbMu.RUnlock()
+
 		cassandraStatus := "connected"
-		if cassandraDB == nil || cassandraDB.Ping() != nil {
+		if db == nil || db.Ping() != nil {
 			cassandraStatus = "disconnected"
 		}
 

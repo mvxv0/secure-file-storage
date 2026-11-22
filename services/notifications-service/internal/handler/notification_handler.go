@@ -64,7 +64,8 @@ func (h *NotificationHandler) CreateNotification(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if input.UserID == "" {
+	// samo administrator moze da prosledi tudji userId; redovan korisnik uvek kreira za sebe
+	if input.UserID == "" || claims.Role != "A" {
 		input.UserID = claims.UserID
 	}
 
