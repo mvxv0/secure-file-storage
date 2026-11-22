@@ -9,6 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var (
@@ -72,6 +73,41 @@ func (r *UserRepository) UpdateQuotaUsed(ctx context.Context, id string, quotaUs
 		return ErrUserNotFound
 	}
 	return nil
+}
+
+// UpdateQuotaLimit azurira maksimalnu dozvoljenu kvotu skladista (quota_limit) za korisnika
+func (r *UserRepository) UpdateQuotaLimit(ctx context.Context, id string, quotaLimit int64) error {
+	filter := buildIDFilter(id)
+	update := bson.M{
+		"$set": bson.M{
+			"quota_limit": quotaLimit,
+			"updated_at":  time.Now().UTC(),
+		},
+	}
+	res, err := r.db.Collection("users").UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+	if res.MatchedCount == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+// FindAllUsers vraca sve korisnike iz baze (za administratorski pregled kvota i zauzeca)
+func (r *UserRepository) FindAllUsers(ctx context.Context) ([]model.User, error) {
+	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}})
+	cursor, err := r.db.Collection("users").Find(ctx, bson.M{}, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	users := make([]model.User, 0)
+	if err := cursor.All(ctx, &users); err != nil {
+		return nil, err
+	}
+	return users, nil
 }
 
 func buildIDFilter(id string) bson.M {
