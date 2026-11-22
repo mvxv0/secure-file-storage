@@ -4,7 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../services/auth.service';
 import { FolderService } from '../../services/folder.service';
 import { FileService } from '../../services/file.service';
-import { Folder, FileMetadata, User } from '../../models/types';
+import { NotificationService } from '../../services/notification.service';
+import { Folder, FileMetadata, User, NotificationItem } from '../../models/types';
 
 interface BreadcrumbItem {
   id: string | null;
@@ -35,6 +36,11 @@ export class DriveComponent implements OnInit {
   isCreateFolderOpen = signal<boolean>(false);
   newFolderName = '';
 
+  // Notifikacije 
+  notifications = signal<NotificationItem[]>([]);
+  isNotificationsOpen = signal<boolean>(false);
+  isNotificationsLoading = signal<boolean>(false);
+
   // Poruke i status
   errorMessage = signal<string | null>(null);
   successMessage = signal<string | null>(null);
@@ -43,12 +49,70 @@ export class DriveComponent implements OnInit {
   constructor(
     private authService: AuthService,
     private folderService: FolderService,
-    private fileService: FileService
-  ) {}
+    private fileService: FileService,
+    private notificationService: NotificationService
+  ) { }
 
   ngOnInit(): void {
     this.user.set(this.authService.currentUser());
     this.loadCurrentFolder();
+    this.loadNotifications();
+  }
+
+  loadNotifications(markReadAfterLoad = false): void {
+    this.isNotificationsLoading.set(true);
+    this.notificationService.getNotifications().subscribe({
+      next: (res) => {
+        this.isNotificationsLoading.set(false);
+        if (res.success && res.data) {
+          this.notifications.set(res.data);
+          if (markReadAfterLoad && this.unreadNotificationsCount() > 0) {
+            this.markNotificationsAsRead();
+          }
+        }
+      },
+      error: () => {
+        this.isNotificationsLoading.set(false);
+      }
+    });
+  }
+
+  markNotificationsAsRead(): void {
+    this.notificationService.markAllAsRead().subscribe({
+      next: () => {
+        this.notifications.update(list => list.map(n => ({ ...n, isRead: true })));
+      }
+    });
+  }
+
+  toggleNotificationsModal(): void {
+    const nextState = !this.isNotificationsOpen();
+    this.isNotificationsOpen.set(nextState);
+    if (nextState) {
+      this.loadNotifications(true);
+    }
+  }
+
+  closeNotificationsModal(): void {
+    this.isNotificationsOpen.set(false);
+  }
+
+  unreadNotificationsCount(): number {
+    return this.notifications().filter(n => !n.isRead).length;
+  }
+
+  getNotificationIcon(type: string): string {
+    switch (type) {
+      case 'FOLDER_SHARED':
+        return '📁';
+      case 'FILE_ADDED_TO_SHARED_FOLDER':
+        return '➕';
+      case 'NEW_VERSION':
+        return '🔄';
+      case 'FILE_SHARED':
+      default:
+        return '📄';
+    }
   }
 
   loadCurrentFolder(): void {

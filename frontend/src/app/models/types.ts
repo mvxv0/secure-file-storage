@@ -42,3 +42,15 @@ export interface FolderContentResponse {
   files?: FileMetadata[];
   quotaUsed?: number;
 }
+
+export interface NotificationItem {
+  id: string;
+  userId: string;
+  type: string;
+  resourceId: string;
+  resourceName: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
