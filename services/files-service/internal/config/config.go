@@ -11,6 +11,7 @@ type Config struct {
 	JWTSecret           string
 	StorageDir          string
 	DefaultStorageQuota int64
+	UsersServiceURL     string
 }
 
 func Load() *Config {
@@ -23,5 +24,6 @@ func Load() *Config {
 		JWTSecret:           env.GetString("JWT_SECRET", "dev-secret-key-promeni-u-produkciji"),
 		StorageDir:          env.GetString("FILES_STORAGE_DIR", "uploads"),
 		DefaultStorageQuota: env.GetInt64("DEFAULT_STORAGE_QUOTA_BYTES", 104857600), // 100 MB
+		UsersServiceURL:     env.GetString("USERS_SERVICE_URL", "http://localhost:8081"),
 	}
 }

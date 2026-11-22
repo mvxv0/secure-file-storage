@@ -8,6 +8,7 @@ import (
 
 	"github.com/mvxv0/secure-file-storage/common/auth"
 	"github.com/mvxv0/secure-file-storage/common/httputil"
+	"github.com/mvxv0/secure-file-storage/services/files-service/internal/client"
 	"github.com/mvxv0/secure-file-storage/services/files-service/internal/config"
 	"github.com/mvxv0/secure-file-storage/services/files-service/internal/database"
 	"github.com/mvxv0/secure-file-storage/services/files-service/internal/handler"
@@ -42,8 +43,10 @@ func main() {
 	folderRepo := repository.NewFolderRepository(mongoDB.DB)
 	fileRepo := repository.NewFileRepository(mongoDB.DB)
 
+	usersClient := client.NewHTTPUsersClient(cfg.UsersServiceURL)
+
 	folderService := service.NewFolderService(folderRepo)
-	fileService := service.NewFileService(fileRepo, folderRepo, fileStore, cfg.DefaultStorageQuota)
+	fileService := service.NewFileService(fileRepo, folderRepo, fileStore, usersClient, cfg.DefaultStorageQuota)
 
 	folderHandler := handler.NewFolderHandler(folderService, fileService)
 	fileHandler := handler.NewFileHandler(fileService)

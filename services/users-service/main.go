@@ -40,6 +40,7 @@ func main() {
 	userRepo := repository.NewUserRepository(mongoDB.DB)
 	authService := service.NewAuthService(userRepo, mailClient, cfg)
 	authHandler := handler.NewAuthHandler(authService)
+	internalHandler := handler.NewInternalHandler(userRepo)
 
 	mux := http.NewServeMux()
 
@@ -75,15 +76,19 @@ func main() {
 	mux.HandleFunc("POST /api/auth/verify-otp", authHandler.VerifyOTP)
 	mux.HandleFunc("POST /api/auth/logout", authHandler.Logout)
 
-	// rute za zaboravljenu lozinku i imejl-bazirani reset sa kratkotrajnim linkom 
+	// rute za zaboravljenu lozinku i imejl-bazirani reset sa kratkotrajnim linkom
 	mux.HandleFunc("POST /api/auth/forgot-password", authHandler.ForgotPassword)
 	mux.HandleFunc("POST /api/auth/reset-password", authHandler.ResetPassword)
 
-	// rute za pregled i izmenu podataka korisnickog naloga nakon prijave uz potvrdu putem emaila 
+	// rute za pregled i izmenu podataka korisnickog naloga nakon prijave uz potvrdu putem emaila
 	mux.HandleFunc("GET /api/users/me", auth.Middleware(cfg.JWTSecret, authHandler.GetProfile))
 	mux.HandleFunc("POST /api/users/me/request-update", auth.Middleware(cfg.JWTSecret, authHandler.RequestAccountUpdate))
 	mux.HandleFunc("PUT /api/users/me", auth.Middleware(cfg.JWTSecret, authHandler.UpdateAccount))
 	mux.HandleFunc("POST /api/users/me/update", auth.Middleware(cfg.JWTSecret, authHandler.UpdateAccount))
+
+	// interne rute za sinhronu komunikaciju sa drugim mikroservisima (zahtev 2.5)
+	mux.HandleFunc("GET /internal/users/{id}/quota", internalHandler.GetUserQuota)
+	mux.HandleFunc("PUT /internal/users/{id}/quota-used", internalHandler.UpdateUserQuotaUsed)
 
 	// pokretanje http servera za users-service na portu 8081
 	server := &http.Server{

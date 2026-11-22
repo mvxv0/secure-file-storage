@@ -236,6 +236,8 @@ func (h *FileHandler) writeFileError(w http.ResponseWriter, err error) {
 		httputil.WriteError(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, service.ErrQuotaExceeded):
 		httputil.WriteError(w, http.StatusRequestEntityTooLarge, err.Error())
+	case errors.Is(err, service.ErrUsersServiceUnavailable):
+		httputil.WriteError(w, http.StatusServiceUnavailable, err.Error())
 	case errors.Is(err, repository.ErrFileAlreadyExists):
 		httputil.WriteError(w, http.StatusConflict, err.Error())
 	default:

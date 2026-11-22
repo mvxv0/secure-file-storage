@@ -38,15 +38,9 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*model.
 	return &user, nil
 }
 
-// FindByID trazi korisnika po ID-ju
+// FindByID trazi korisnika po ID-ju (podrzava i ObjectID hex i obican string ID)
 func (r *UserRepository) FindByID(ctx context.Context, id string) (*model.User, error) {
-	var filter bson.M
-	if oid, err := primitive.ObjectIDFromHex(id); err == nil {
-		filter = bson.M{"_id": oid}
-	} else {
-		filter = bson.M{"_id": id}
-	}
-
+	filter := buildIDFilter(id)
 	var user model.User
 	err := r.db.Collection("users").FindOne(ctx, filter).Decode(&user)
 	if err != nil {
@@ -56,6 +50,35 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*model.User, 
 		return nil, err
 	}
 	return &user, nil
+}
+
+// UpdateQuotaUsed azurira trenutno zauzece skladista (quota_used) za korisnika
+func (r *UserRepository) UpdateQuotaUsed(ctx context.Context, id string, quotaUsed int64) error {
+	if quotaUsed < 0 {
+		quotaUsed = 0
+	}
+	filter := buildIDFilter(id)
+	update := bson.M{
+		"$set": bson.M{
+			"quota_used": quotaUsed,
+			"updated_at": time.Now().UTC(),
+		},
+	}
+	res, err := r.db.Collection("users").UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+	if res.MatchedCount == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+func buildIDFilter(id string) bson.M {
+	if oid, err := primitive.ObjectIDFromHex(id); err == nil {
+		return bson.M{"_id": oid}
+	}
+	return bson.M{"_id": id}
 }
 
 // UpdatePassword azurira hesiranu lozinku i vreme poslednje promene lozinke (password_changed_at)
