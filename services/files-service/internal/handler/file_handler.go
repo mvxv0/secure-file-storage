@@ -146,6 +146,29 @@ func (h *FileHandler) HandleFileByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// PATCH /api/files/{id} ili PATCH/PUT/POST /api/files/{id}/rename -> preimenovanje datoteke (zahtev 1.6)
+	isRenameRoute := (len(parts) == 1 && r.Method == http.MethodPatch) ||
+		(len(parts) == 2 && parts[1] == "rename" && (r.Method == http.MethodPatch || r.Method == http.MethodPut || r.Method == http.MethodPost))
+
+	if isRenameRoute {
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			httputil.WriteError(w, http.StatusBadRequest, "Nevalidan JSON format tela zahteva")
+			return
+		}
+
+		updatedMeta, err := h.fileService.RenameFile(r.Context(), claims.UserID, fileID, req.Name)
+		if err != nil {
+			h.writeFileError(w, err)
+			return
+		}
+
+		httputil.WriteSuccess(w, http.StatusOK, "Naziv datoteke je uspesno izmenjen", updatedMeta)
+		return
+	}
+
 	// PUT /api/files/{id} ili PUT/POST /api/files/{id}/version -> otpremanje nove verzije
 	isVersionRoute := (len(parts) == 1 && r.Method == http.MethodPut) ||
 		(len(parts) == 2 && parts[1] == "version" && (r.Method == http.MethodPut || r.Method == http.MethodPost))

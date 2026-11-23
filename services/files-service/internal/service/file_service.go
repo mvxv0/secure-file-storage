@@ -309,6 +309,59 @@ func (s *FileService) GetFileMetadata(ctx context.Context, ownerID, fileID strin
 	return file, nil
 }
 
+// ValidateFileName proverava naziv datoteke i whitelisting ekstenzije (zahtev 1.6 i 2.18)
+func ValidateFileName(fileName string) (string, error) {
+	cleaned := strings.TrimSpace(fileName)
+	if cleaned == "" || len(cleaned) > 150 || strings.ContainsAny(cleaned, "/\\<>:\"|?*") || cleaned == "." || cleaned == ".." {
+		return "", ErrInvalidFileName
+	}
+
+	ext := strings.ToLower(filepath.Ext(cleaned))
+	if ext == "" || !allowedExtensions[ext] {
+		return "", fmt.Errorf("%w: ekstenzija '%s' nije na listi dozvoljenih", ErrDisallowedFileExt, ext)
+	}
+	return cleaned, nil
+}
+
+// RenameFile menja naziv postojece datoteke uz proveru vlasnistva, validaciju imena/ekstenzije i proveru duplikata (zahtev 1.6)
+func (s *FileService) RenameFile(ctx context.Context, ownerID, fileID, newName string) (*model.FileMetadata, error) {
+	existing, err := s.fileRepo.FindByID(ctx, fileID)
+	if err != nil {
+		return nil, err
+	}
+	if existing.OwnerID != ownerID {
+		return nil, ErrFileNotOwned
+	}
+
+	trimmed := strings.TrimSpace(newName)
+	// Ako korisnik pri preimenovanju nije uneo ekstenziju, zadrzavamo originalnu ekstenziju datoteke
+	if trimmed != "" && filepath.Ext(trimmed) == "" {
+		origExt := filepath.Ext(existing.Name)
+		if origExt != "" {
+			trimmed = trimmed + origExt
+		}
+	}
+
+	cleanName, err := ValidateFileName(trimmed)
+	if err != nil {
+		return nil, err
+	}
+
+	if existing.Name == cleanName {
+		return existing, nil
+	}
+
+	duplicate, err := s.fileRepo.FindByNameAndFolder(ctx, ownerID, existing.ParentFolderID, cleanName)
+	if err != nil {
+		return nil, err
+	}
+	if duplicate != nil && duplicate.ID != existing.ID {
+		return nil, repository.ErrFileAlreadyExists
+	}
+
+	return s.fileRepo.Rename(ctx, fileID, cleanName)
+}
+
 // GetFilesInFolder vraca sve datoteke korisnika u izabranom folderu (ili u root-u ako je folderID == nil)
 func (s *FileService) GetFilesInFolder(ctx context.Context, ownerID string, folderID *string) ([]model.FileMetadata, error) {
 	return s.fileRepo.FindByFolder(ctx, ownerID, folderID)

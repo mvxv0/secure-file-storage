@@ -40,7 +40,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			errors.Is(err, service.ErrInvalidEmail),
 			errors.Is(err, service.ErrPasswordMismatch),
 			errors.Is(err, service.ErrWeakPassword),
-			errors.Is(err, service.ErrInvalidNameLength):
+			errors.Is(err, service.ErrInvalidNameLength),
+			errors.Is(err, service.ErrUnsafeCharacters):
 			httputil.WriteError(w, http.StatusBadRequest, err.Error())
 		case errors.Is(err, repository.ErrUserAlreadyExists):
 			httputil.WriteError(w, http.StatusConflict, err.Error())

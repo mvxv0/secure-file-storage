@@ -79,11 +79,12 @@ func main() {
 	mux.HandleFunc("GET /health", healthHandler)
 	mux.HandleFunc("GET /api/notifications/health", healthHandler)
 
-	// rute za pregled i rucno popunjavanje notifikacija
-	mux.HandleFunc("GET /api/notifications", auth.Middleware(cfg.JWTSecret, notificationHandler.GetNotifications))
-	mux.HandleFunc("POST /api/notifications", auth.Middleware(cfg.JWTSecret, notificationHandler.CreateNotification))
-	mux.HandleFunc("POST /api/notifications/seed", auth.Middleware(cfg.JWTSecret, notificationHandler.SeedNotifications))
-	mux.HandleFunc("POST /api/notifications/read", auth.Middleware(cfg.JWTSecret, notificationHandler.MarkAllAsRead))
+	// rute za pregled i rucno popunjavanje notifikacija uz kontrolu pristupa po ulozi ([US 09.01])
+	rkOrAdmin := []string{"RK", "A"}
+	mux.HandleFunc("GET /api/notifications", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, notificationHandler.GetNotifications))
+	mux.HandleFunc("POST /api/notifications", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, notificationHandler.CreateNotification))
+	mux.HandleFunc("POST /api/notifications/seed", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, notificationHandler.SeedNotifications))
+	mux.HandleFunc("POST /api/notifications/read", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, notificationHandler.MarkAllAsRead))
 
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,

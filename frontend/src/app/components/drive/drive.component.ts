@@ -164,8 +164,30 @@ export class DriveComponent implements OnInit {
     this.newFolderName = '';
   }
 
+  // Dozvoljene ekstenzije na klijentskoj strani ([US 09.02] Validacija ulaznih podataka)
+  private readonly allowedExtensions = [
+    '.txt', '.md', '.csv', '.json', '.xml', '.pdf',
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg',
+    '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.zip'
+  ];
+
+  validateItemNameClient(name: string, maxLen = 100): string | null {
+    const trimmed = name.trim();
+    if (!trimmed) return 'Naziv ne moze biti prazan.';
+    if (trimmed.length > maxLen) return `Naziv ne sme biti duzi od ${maxLen} karaktera.`;
+    if (/[\/\\<>:"|?*$]/.test(trimmed) || trimmed === '.' || trimmed === '..') {
+      return 'Naziv sadrzi nedozvoljene specijalne karaktere.';
+    }
+    return null;
+  }
+
   createFolder(): void {
-    if (!this.newFolderName.trim()) return;
+    const validationErr = this.validateItemNameClient(this.newFolderName, 100);
+    if (validationErr) {
+      this.errorMessage.set(validationErr);
+      setTimeout(() => this.errorMessage.set(null), 4000);
+      return;
+    }
 
     this.folderService.createFolder(this.newFolderName.trim(), this.currentFolderId()).subscribe({
       next: (res) => {
@@ -189,6 +211,30 @@ export class DriveComponent implements OnInit {
     if (!input.files || input.files.length === 0) return;
 
     const file = input.files[0];
+
+    // [US 09.02] Klijentska validacija naziva, velicine i dozvoljenog tipa datoteke (whitelisting)
+    const nameErr = this.validateItemNameClient(file.name, 150);
+    if (nameErr) {
+      input.value = '';
+      this.errorMessage.set(nameErr);
+      setTimeout(() => this.errorMessage.set(null), 4000);
+      return;
+    }
+    if (file.size === 0) {
+      input.value = '';
+      this.errorMessage.set('Datoteka ne moze biti prazna (0 B).');
+      setTimeout(() => this.errorMessage.set(null), 4000);
+      return;
+    }
+    const dotIdx = file.name.lastIndexOf('.');
+    const ext = dotIdx >= 0 ? file.name.substring(dotIdx).toLowerCase() : '';
+    if (!ext || !this.allowedExtensions.includes(ext)) {
+      input.value = '';
+      this.errorMessage.set(`Tip datoteke "${ext || 'bez ekstenzije'}" nije dozvoljen (whitelisting zastita).`);
+      setTimeout(() => this.errorMessage.set(null), 5000);
+      return;
+    }
+
     this.isLoading.set(true);
     this.errorMessage.set(null);
 
