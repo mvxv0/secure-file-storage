@@ -1,10 +1,10 @@
-import { Component, signal } from '@angular/core';
+import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 
-type AuthTab = 'login' | 'register' | 'verify';
+type AuthTab = 'login' | 'register' | 'verify' | 'recovery';
 
 @Component({
   selector: 'app-auth',
@@ -13,7 +13,7 @@ type AuthTab = 'login' | 'register' | 'verify';
   templateUrl: './auth.component.html',
   styleUrl: './auth.component.css'
 })
-export class AuthComponent {
+export class AuthComponent implements OnInit {
   currentTab = signal<AuthTab>('login');
 
   // Login polja
@@ -33,15 +33,50 @@ export class AuthComponent {
   verifyEmail = '';
   verifyCode = '';
 
+  // Recovery polja (1.2 Zaboravljena lozinka & 1.3 Povracaj naloga magicnim linkom)
+  recoveryMode = signal<'magic' | 'reset'>('magic');
+  magicEmail = '';
+  magicToken = '';
+  magicStep = signal<'request' | 'verify'>('request');
+
+  resetEmail = '';
+  resetToken = '';
+  resetNewPassword = '';
+  resetConfirmPassword = '';
+  resetStep = signal<'request' | 'confirm'>('request');
+
   // Poruke
   errorMessage = signal<string | null>(null);
   successMessage = signal<string | null>(null);
   isLoading = signal<boolean>(false);
 
-  constructor(private authService: AuthService, private router: Router) {
+  constructor(
+    private authService: AuthService,
+    private router: Router,
+    private route: ActivatedRoute
+  ) {
     if (this.authService.isLoggedIn()) {
       this.router.navigate(['/drive']);
     }
+  }
+
+  ngOnInit(): void {
+    this.route.queryParams.subscribe(params => {
+      if (params['magicEmail'] && params['magicToken']) {
+        this.currentTab.set('recovery');
+        this.recoveryMode.set('magic');
+        this.magicEmail = params['magicEmail'];
+        this.magicToken = params['magicToken'];
+        this.magicStep.set('verify');
+        this.onVerifyMagicLink();
+      } else if (params['email'] && params['token']) {
+        this.currentTab.set('recovery');
+        this.recoveryMode.set('reset');
+        this.resetEmail = params['email'];
+        this.resetToken = params['token'];
+        this.resetStep.set('confirm');
+      }
+    });
   }
 
   setTab(tab: AuthTab): void {
@@ -138,6 +173,88 @@ export class AuthComponent {
       error: (err) => {
         this.isLoading.set(false);
         this.errorMessage.set(err.error?.error || 'Neispravan verifikacioni kod.');
+      }
+    });
+  }
+
+  // --- 1.3 POVRACAJ NALOGA (MAGICNI LINK) ---
+  setRecoveryMode(mode: 'magic' | 'reset'): void {
+    this.recoveryMode.set(mode);
+    this.clearMessages();
+  }
+
+  onRequestMagicLink(): void {
+    this.clearMessages();
+    this.isLoading.set(true);
+
+    this.authService.requestMagicLink(this.magicEmail).subscribe({
+      next: (res) => {
+        this.isLoading.set(false);
+        this.magicStep.set('verify');
+        this.successMessage.set(res.message || 'Magicni link i token su poslati na email (proverite MailHog na :8025).');
+      },
+      error: (err) => {
+        this.isLoading.set(false);
+        this.errorMessage.set(err.error?.error || 'Greska pri slanju magicnog linka.');
+      }
+    });
+  }
+
+  onVerifyMagicLink(): void {
+    this.clearMessages();
+    this.isLoading.set(true);
+
+    this.authService.verifyMagicLink(this.magicEmail, this.magicToken).subscribe({
+      next: (res) => {
+        this.isLoading.set(false);
+        if (res.success) {
+          this.router.navigate(['/drive']);
+        }
+      },
+      error: (err) => {
+        this.isLoading.set(false);
+        this.errorMessage.set(err.error?.error || 'Neispravan ili istekao magicni link/token.');
+      }
+    });
+  }
+
+  // --- 1.2 ZABORAVLJENA LOZINKA (RESET LOZINKE) ---
+  onForgotPasswordSubmit(): void {
+    this.clearMessages();
+    this.isLoading.set(true);
+
+    this.authService.forgotPassword(this.resetEmail).subscribe({
+      next: (res) => {
+        this.isLoading.set(false);
+        this.resetStep.set('confirm');
+        this.successMessage.set(res.message || 'Kratkotrajni link i token za reset lozinke su poslati na email.');
+      },
+      error: (err) => {
+        this.isLoading.set(false);
+        this.errorMessage.set(err.error?.error || 'Greska pri zahtevu za reset lozinke.');
+      }
+    });
+  }
+
+  onResetPasswordSubmit(): void {
+    this.clearMessages();
+    this.isLoading.set(true);
+
+    this.authService.resetPassword({
+      email: this.resetEmail,
+      token: this.resetToken,
+      newPassword: this.resetNewPassword,
+      confirmPassword: this.resetConfirmPassword
+    }).subscribe({
+      next: (res) => {
+        this.isLoading.set(false);
+        this.successMessage.set(res.message || 'Lozinka je uspesno promenjena! Mozete se prijaviti.');
+        this.loginEmail = this.resetEmail;
+        this.currentTab.set('login');
+      },
+      error: (err) => {
+        this.isLoading.set(false);
+        this.errorMessage.set(err.error?.error || 'Greska pri promeni lozinke.');
       }
     });
   }

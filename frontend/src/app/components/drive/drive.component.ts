@@ -36,6 +36,22 @@ export class DriveComponent implements OnInit {
   isCreateFolderOpen = signal<boolean>(false);
   newFolderName = '';
 
+  // Izmena podataka korisnickog naloga (US 02.04)
+  isProfileModalOpen = signal<boolean>(false);
+  profileFirstName = '';
+  profileLastName = '';
+  profileNewPassword = '';
+  profileConfirmPassword = '';
+  profileVerificationCode = '';
+  profileUpdateCodeSent = signal<boolean>(false);
+  isProfileLoading = signal<boolean>(false);
+
+  // Preimenovanje foldera ili datoteke (zahtev 1.6)
+  isRenameModalOpen = signal<boolean>(false);
+  renameTargetType = signal<'folder' | 'file'>('folder');
+  renameTargetId = signal<string>('');
+  renameNewName = '';
+
   // Notifikacije 
   notifications = signal<NotificationItem[]>([]);
   isNotificationsOpen = signal<boolean>(false);
@@ -183,6 +199,67 @@ export class DriveComponent implements OnInit {
     });
   }
 
+  // --- PREIMENOVANJE FOLDERA I DATOTEKA (zahtev 1.6) ---
+  openRenameFolderModal(folder: Folder, event?: Event): void {
+    if (event) event.stopPropagation();
+    this.renameTargetType.set('folder');
+    this.renameTargetId.set(folder.id);
+    this.renameNewName = folder.name;
+    this.isRenameModalOpen.set(true);
+  }
+
+  openRenameFileModal(file: FileMetadata, event?: Event): void {
+    if (event) event.stopPropagation();
+    this.renameTargetType.set('file');
+    this.renameTargetId.set(file.id);
+    this.renameNewName = file.name;
+    this.isRenameModalOpen.set(true);
+  }
+
+  closeRenameModal(): void {
+    this.isRenameModalOpen.set(false);
+    this.renameTargetId.set('');
+    this.renameNewName = '';
+  }
+
+  submitRename(): void {
+    const trimmed = this.renameNewName.trim();
+    const id = this.renameTargetId();
+    if (!trimmed || !id) return;
+
+    if (this.renameTargetType() === 'folder') {
+      this.folderService.renameFolder(id, trimmed).subscribe({
+        next: (res) => {
+          if (res.success) {
+            this.closeRenameModal();
+            this.successMessage.set('Naziv foldera je uspesno izmenjen!');
+            setTimeout(() => this.successMessage.set(null), 3000);
+            this.loadCurrentFolder();
+          }
+        },
+        error: (err) => {
+          this.errorMessage.set(err.error?.error || 'Greska pri preimenovanju foldera.');
+          setTimeout(() => this.errorMessage.set(null), 4000);
+        }
+      });
+    } else {
+      this.fileService.renameFile(id, trimmed).subscribe({
+        next: (res) => {
+          if (res.success) {
+            this.closeRenameModal();
+            this.successMessage.set('Naziv datoteke je uspesno izmenjen!');
+            setTimeout(() => this.successMessage.set(null), 3000);
+            this.loadCurrentFolder();
+          }
+        },
+        error: (err) => {
+          this.errorMessage.set(err.error?.error || 'Greska pri preimenovanju datoteke.');
+          setTimeout(() => this.errorMessage.set(null), 4000);
+        }
+      });
+    }
+  }
+
   // --- UPLOAD FAJLA ---
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
@@ -240,6 +317,68 @@ export class DriveComponent implements OnInit {
   formatQuota(user: User | null): string {
     if (!user) return '';
     return `${this.formatSize(user.quotaUsed)} / ${this.formatSize(user.quotaLimit)}`;
+  }
+
+  // --- IZMENA KORISNICKOG NALOGA (US 02.04) ---
+  openProfileModal(): void {
+    const u = this.user();
+    this.profileFirstName = u?.firstName || '';
+    this.profileLastName = u?.lastName || '';
+    this.profileNewPassword = '';
+    this.profileConfirmPassword = '';
+    this.profileVerificationCode = '';
+    this.profileUpdateCodeSent.set(false);
+    this.isProfileModalOpen.set(true);
+  }
+
+  closeProfileModal(): void {
+    this.isProfileModalOpen.set(false);
+  }
+
+  requestProfileUpdateCode(): void {
+    this.isProfileLoading.set(true);
+    this.errorMessage.set(null);
+
+    this.authService.requestAccountUpdate().subscribe({
+      next: (res) => {
+        this.isProfileLoading.set(false);
+        this.profileUpdateCodeSent.set(true);
+        this.successMessage.set(res.message || 'Verifikacioni kod je poslat na vas email (proverite MailHog na :8025).');
+        setTimeout(() => this.successMessage.set(null), 4000);
+      },
+      error: (err) => {
+        this.isProfileLoading.set(false);
+        this.errorMessage.set(err.error?.error || 'Greska pri slanju verifikacionog koda.');
+      }
+    });
+  }
+
+  submitProfileUpdate(): void {
+    if (!this.profileVerificationCode.trim()) return;
+    this.isProfileLoading.set(true);
+    this.errorMessage.set(null);
+
+    this.authService.updateAccount({
+      code: this.profileVerificationCode.trim(),
+      firstName: this.profileFirstName.trim(),
+      lastName: this.profileLastName.trim(),
+      newPassword: this.profileNewPassword || undefined,
+      confirmPassword: this.profileConfirmPassword || undefined
+    }).subscribe({
+      next: (res) => {
+        this.isProfileLoading.set(false);
+        if (res.success && res.data) {
+          this.user.set(res.data);
+          this.closeProfileModal();
+          this.successMessage.set(res.message || 'Podaci naloga su uspesno izmenjeni!');
+          setTimeout(() => this.successMessage.set(null), 3500);
+        }
+      },
+      error: (err) => {
+        this.isProfileLoading.set(false);
+        this.errorMessage.set(err.error?.error || 'Greska pri izmeni podataka naloga.');
+      }
+    });
   }
 
   logout(): void {

@@ -9,6 +9,7 @@ import { Router } from '@angular/router';
 })
 export class AuthService {
   private apiUrl = 'http://localhost:8080/api/auth';
+  private usersUrl = 'http://localhost:8080/api/users';
   
   currentUser = signal<User | null>(this.getStoredUser());
 
@@ -39,6 +40,60 @@ export class AuthService {
           localStorage.setItem('auth_token', res.data.token);
           localStorage.setItem('auth_user', JSON.stringify(res.data.user));
           this.currentUser.set(res.data.user);
+        }
+      })
+    );
+  }
+
+  forgotPassword(email: string): Observable<ApiResponse> {
+    return this.http.post<ApiResponse>(`${this.apiUrl}/forgot-password`, { email });
+  }
+
+  resetPassword(data: {
+    email: string;
+    token: string;
+    newPassword: string;
+    confirmPassword: string;
+  }): Observable<ApiResponse> {
+    return this.http.post<ApiResponse>(`${this.apiUrl}/reset-password`, data);
+  }
+
+  requestMagicLink(email: string): Observable<ApiResponse> {
+    return this.http.post<ApiResponse>(`${this.apiUrl}/magic-link`, { email });
+  }
+
+  verifyMagicLink(email: string, token: string): Observable<ApiResponse<{ token: string; user: User }>> {
+    return this.http.post<ApiResponse<{ token: string; user: User }>>(`${this.apiUrl}/magic-link/verify`, { email, token }).pipe(
+      tap(res => {
+        if (res.success && res.data) {
+          localStorage.setItem('auth_token', res.data.token);
+          localStorage.setItem('auth_user', JSON.stringify(res.data.user));
+          this.currentUser.set(res.data.user);
+        }
+      })
+    );
+  }
+
+  getProfile(): Observable<ApiResponse<User>> {
+    return this.http.get<ApiResponse<User>>(`${this.usersUrl}/me`);
+  }
+
+  requestAccountUpdate(): Observable<ApiResponse> {
+    return this.http.post<ApiResponse>(`${this.usersUrl}/me/request-update`, {});
+  }
+
+  updateAccount(data: {
+    code: string;
+    firstName: string;
+    lastName: string;
+    newPassword?: string;
+    confirmPassword?: string;
+  }): Observable<ApiResponse<User>> {
+    return this.http.put<ApiResponse<User>>(`${this.usersUrl}/me`, data).pipe(
+      tap(res => {
+        if (res.success && res.data) {
+          localStorage.setItem('auth_user', JSON.stringify(res.data));
+          this.currentUser.set(res.data);
         }
       })
     );
