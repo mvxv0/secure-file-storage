@@ -23,5 +23,9 @@ export class FileService {
   downloadFile(fileId: string): Observable<Blob> {
     return this.http.get(`${this.apiUrl}/${fileId}/download`, { responseType: 'blob' });
   }
+
+  renameFile(fileId: string, name: string): Observable<ApiResponse<FileMetadata>> {
+    return this.http.patch<ApiResponse<FileMetadata>>(`${this.apiUrl}/${fileId}`, { name });
+  }
 }
 

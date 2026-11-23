@@ -23,5 +23,9 @@ export class FolderService {
     const url = folderId ? `${this.apiUrl}/${folderId}` : this.apiUrl;
     return this.http.get<ApiResponse<FolderContentResponse>>(url);
   }
+
+  renameFolder(folderId: string, name: string): Observable<ApiResponse<Folder>> {
+    return this.http.patch<ApiResponse<Folder>>(`${this.apiUrl}/${folderId}`, { name });
+  }
 }
 
