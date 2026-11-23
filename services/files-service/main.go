@@ -70,10 +70,10 @@ func main() {
 		})
 	})
 
-	// rute za upravljanje folderima (zahtev 1.4)
+	// rute za upravljanje folderima i preimenovanje (zahtev 1.4 i 1.6)
 	mux.HandleFunc("POST /api/folders", auth.Middleware(cfg.JWTSecret, folderHandler.CreateFolder))
 	mux.HandleFunc("GET /api/folders", auth.Middleware(cfg.JWTSecret, folderHandler.GetFolderContents))
-	mux.HandleFunc("GET /api/folders/", auth.Middleware(cfg.JWTSecret, folderHandler.GetFolderContents))
+	mux.HandleFunc("/api/folders/", auth.Middleware(cfg.JWTSecret, folderHandler.HandleFolderByID))
 
 	// rute za otpremanje datoteka i novih verzija (zahtev 1.5)
 	mux.HandleFunc("POST /api/files", auth.Middleware(cfg.JWTSecret, fileHandler.UploadFile))

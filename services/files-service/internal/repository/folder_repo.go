@@ -103,3 +103,34 @@ func (r *FolderRepository) FindSubfolders(ctx context.Context, ownerID string, p
 	return folders, nil
 }
 
+// Rename azurira naziv postojeceg foldera u bazi (zahtev 1.6)
+func (r *FolderRepository) Rename(ctx context.Context, id string, newName string) (*model.Folder, error) {
+	oid, err := primitive.ObjectIDFromHex(id)
+	var filter bson.M
+	if err == nil {
+		filter = bson.M{"_id": oid}
+	} else {
+		filter = bson.M{"_id": id}
+	}
+
+	now := time.Now().UTC()
+	update := bson.M{
+		"$set": bson.M{
+			"name":       newName,
+			"updated_at": now,
+		},
+	}
+
+	res, err := r.db.Collection("folders").UpdateOne(ctx, filter, update)
+	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return nil, ErrFolderAlreadyExists
+		}
+		return nil, err
+	}
+	if res.MatchedCount == 0 {
+		return nil, ErrFolderNotFound
+	}
+	return r.FindByID(ctx, id)
+}
+

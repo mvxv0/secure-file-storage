@@ -70,7 +70,7 @@
             <th>Naziv</th>
             <th style="width: 120px;">Velicina</th>
             <th style="width: 180px;">Poslednja izmena</th>
-            <th style="width: 140px; text-align: right;">Akcije</th>
+            <th style="width: 220px; text-align: right;">Akcije</th>
           </tr>
         </thead>
         <tbody>
@@ -90,7 +90,8 @@
             <td>—</td>
             <td>{{ f.updatedAt | date:'dd.MM.yyyy HH:mm' }}</td>
             <td class="action-cell">
-              <button class="btn-sm" (click)="openFolder(f)">Otvori</button>
+              <button class="btn-sm" (click)="openRenameFolderModal(f, $event)">Preimenuj</button>
+              <button class="btn-sm" style="margin-left: 6px;" (click)="openFolder(f)">Otvori</button>
             </td>
           </tr>
 
@@ -101,7 +102,8 @@
             <td>{{ formatSize(file.size) }}</td>
             <td>{{ file.updatedAt | date:'dd.MM.yyyy HH:mm' }}</td>
             <td class="action-cell">
-              <button class="btn-sm btn-download" (click)="downloadFile(file)">Preuzmi</button>
+              <button class="btn-sm" (click)="openRenameFileModal(file, $event)">Preimenuj</button>
+              <button class="btn-sm btn-download" style="margin-left: 6px;" (click)="downloadFile(file)">Preuzmi</button>
             </td>
           </tr>
         </tbody>
@@ -129,6 +131,29 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" (click)="closeCreateFolderModal()">Otkazi</button>
       <button class="btn btn-primary" [disabled]="!newFolderName.trim()" (click)="createFolder()">Kreiraj</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal za preimenovanje foldera ili datoteke (zahtev 1.6) -->
+<div class="modal-backdrop" *ngIf="isRenameModalOpen()" (click)="closeRenameModal()">
+  <div class="modal-card" (click)="$event.stopPropagation()">
+    <h3>{{ renameTargetType() === 'folder' ? 'Preimenuj folder' : 'Preimenuj datoteku' }}</h3>
+    <div class="form-group">
+      <label for="renameInput">Novi naziv</label>
+      <input
+        id="renameInput"
+        type="text"
+        [(ngModel)]="renameNewName"
+        placeholder="Unesite novi naziv"
+        (keyup.enter)="submitRename()"
+        autofocus
+      />
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" (click)="closeRenameModal()">Otkazi</button>
+      <button class="btn btn-primary" [disabled]="!renameNewName.trim()" (click)="submitRename()">Sacuvaj</button>
     </div>
   </div>
 </div>
