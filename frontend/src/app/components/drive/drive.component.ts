@@ -36,6 +36,12 @@ export class DriveComponent implements OnInit {
   isCreateFolderOpen = signal<boolean>(false);
   newFolderName = '';
 
+  // Preimenovanje foldera ili datoteke (zahtev 1.6)
+  isRenameModalOpen = signal<boolean>(false);
+  renameTargetType = signal<'folder' | 'file'>('folder');
+  renameTargetId = signal<string>('');
+  renameNewName = '';
+
   // Notifikacije 
   notifications = signal<NotificationItem[]>([]);
   isNotificationsOpen = signal<boolean>(false);
@@ -181,6 +187,67 @@ export class DriveComponent implements OnInit {
         setTimeout(() => this.errorMessage.set(null), 4000);
       }
     });
+  }
+
+  // --- PREIMENOVANJE FOLDERA I DATOTEKA (zahtev 1.6) ---
+  openRenameFolderModal(folder: Folder, event?: Event): void {
+    if (event) event.stopPropagation();
+    this.renameTargetType.set('folder');
+    this.renameTargetId.set(folder.id);
+    this.renameNewName = folder.name;
+    this.isRenameModalOpen.set(true);
+  }
+
+  openRenameFileModal(file: FileMetadata, event?: Event): void {
+    if (event) event.stopPropagation();
+    this.renameTargetType.set('file');
+    this.renameTargetId.set(file.id);
+    this.renameNewName = file.name;
+    this.isRenameModalOpen.set(true);
+  }
+
+  closeRenameModal(): void {
+    this.isRenameModalOpen.set(false);
+    this.renameTargetId.set('');
+    this.renameNewName = '';
+  }
+
+  submitRename(): void {
+    const trimmed = this.renameNewName.trim();
+    const id = this.renameTargetId();
+    if (!trimmed || !id) return;
+
+    if (this.renameTargetType() === 'folder') {
+      this.folderService.renameFolder(id, trimmed).subscribe({
+        next: (res) => {
+          if (res.success) {
+            this.closeRenameModal();
+            this.successMessage.set('Naziv foldera je uspesno izmenjen!');
+            setTimeout(() => this.successMessage.set(null), 3000);
+            this.loadCurrentFolder();
+          }
+        },
+        error: (err) => {
+          this.errorMessage.set(err.error?.error || 'Greska pri preimenovanju foldera.');
+          setTimeout(() => this.errorMessage.set(null), 4000);
+        }
+      });
+    } else {
+      this.fileService.renameFile(id, trimmed).subscribe({
+        next: (res) => {
+          if (res.success) {
+            this.closeRenameModal();
+            this.successMessage.set('Naziv datoteke je uspesno izmenjen!');
+            setTimeout(() => this.successMessage.set(null), 3000);
+            this.loadCurrentFolder();
+          }
+        },
+        error: (err) => {
+          this.errorMessage.set(err.error?.error || 'Greska pri preimenovanju datoteke.');
+          setTimeout(() => this.errorMessage.set(null), 4000);
+        }
+      });
+    }
   }
 
   // --- UPLOAD FAJLA ---
