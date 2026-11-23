@@ -70,15 +70,16 @@ func main() {
 		})
 	})
 
-	// rute za upravljanje folderima i preimenovanje (zahtev 1.4 i 1.6)
-	mux.HandleFunc("POST /api/folders", auth.Middleware(cfg.JWTSecret, folderHandler.CreateFolder))
-	mux.HandleFunc("GET /api/folders", auth.Middleware(cfg.JWTSecret, folderHandler.GetFolderContents))
-	mux.HandleFunc("/api/folders/", auth.Middleware(cfg.JWTSecret, folderHandler.HandleFolderByID))
+	// rute za upravljanje folderima i preimenovanje uz kontrolu pristupa po ulozi (zahtev 1.4, 1.6 i 2.17 / US 09.01)
+	rkOrAdmin := []string{"RK", "A"}
+	mux.HandleFunc("POST /api/folders", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, folderHandler.CreateFolder))
+	mux.HandleFunc("GET /api/folders", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, folderHandler.GetFolderContents))
+	mux.HandleFunc("/api/folders/", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, folderHandler.HandleFolderByID))
 
-	// rute za otpremanje datoteka i novih verzija (zahtev 1.5)
-	mux.HandleFunc("POST /api/files", auth.Middleware(cfg.JWTSecret, fileHandler.UploadFile))
-	mux.HandleFunc("GET /api/files", auth.Middleware(cfg.JWTSecret, fileHandler.ListFiles))
-	mux.HandleFunc("/api/files/", auth.Middleware(cfg.JWTSecret, fileHandler.HandleFileByID))
+	// rute za otpremanje datoteka i novih verzija uz kontrolu pristupa po ulozi (zahtev 1.5 i 2.17 / US 09.01)
+	mux.HandleFunc("POST /api/files", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, fileHandler.UploadFile))
+	mux.HandleFunc("GET /api/files", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, fileHandler.ListFiles))
+	mux.HandleFunc("/api/files/", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, fileHandler.HandleFileByID))
 
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,

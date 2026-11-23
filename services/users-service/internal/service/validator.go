@@ -13,7 +13,13 @@ var (
 	ErrPasswordMismatch  = errors.New("lozinka i ponovljena lozinka se ne poklapaju")
 	ErrWeakPassword      = errors.New("lozinka nije dovoljno jaka: mora imati bar 8 karaktera, jedno veliko slovo, jedno malo slovo, jedan broj i jedan specijalan karakter")
 	ErrInvalidNameLength = errors.New("ime i prezime moraju imati izmedju 2 i 50 karaktera")
+	ErrUnsafeCharacters  = errors.New("uneta vrednost sadrzi nedozvoljene specijalne karaktere (XSS / Injection zastita)")
 )
+
+// ContainsUnsafeInput proverava da li ulazni string sadrzi nedozvoljene karaktere (<, >, $, {, }) radi sprecavanja XSS i NoSQL/SQL injection napada ([US 09.02] / zahtev 2.18)
+func ContainsUnsafeInput(val string) bool {
+	return strings.ContainsAny(val, "<>${}")
+}
 
 // ValidateRegistration proverava sva ulazna polja forme za registraciju
 func ValidateRegistration(firstName, lastName, email, password, confirmPassword string) error {
@@ -29,7 +35,14 @@ func ValidateRegistration(firstName, lastName, email, password, confirmPassword 
 		return ErrInvalidNameLength
 	}
 
+	if ContainsUnsafeInput(firstName) || ContainsUnsafeInput(lastName) || ContainsUnsafeInput(email) {
+		return ErrUnsafeCharacters
+	}
+
 	// provera email formata
+	if len(email) > 120 {
+		return ErrInvalidEmail
+	}
 	if _, err := mail.ParseAddress(email); err != nil {
 		return ErrInvalidEmail
 	}
