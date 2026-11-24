@@ -92,11 +92,16 @@ func main() {
 	mux.HandleFunc("POST /api/auth/forgot-password", authHandler.ForgotPassword)
 	mux.HandleFunc("POST /api/auth/reset-password", authHandler.ResetPassword)
 
-	// rute za pregled i izmenu podataka korisnickog naloga nakon prijave uz potvrdu putem emaila
-	mux.HandleFunc("GET /api/users/me", auth.Middleware(cfg.JWTSecret, authHandler.GetProfile))
-	mux.HandleFunc("POST /api/users/me/request-update", auth.Middleware(cfg.JWTSecret, authHandler.RequestAccountUpdate))
-	mux.HandleFunc("PUT /api/users/me", auth.Middleware(cfg.JWTSecret, authHandler.UpdateAccount))
-	mux.HandleFunc("POST /api/users/me/update", auth.Middleware(cfg.JWTSecret, authHandler.UpdateAccount))
+	// rute za povracaj naloga upotrebom magicnog linka (zahtev 1.3)
+	mux.HandleFunc("POST /api/auth/magic-link", authHandler.RequestMagicLink)
+	mux.HandleFunc("POST /api/auth/magic-link/verify", authHandler.VerifyMagicLink)
+
+	// rute za pregled i izmenu podataka korisnickog naloga nakon prijave uz potvrdu putem emaila i kontrolu uloge ([US 09.01])
+	rkOrAdmin := []string{"RK", "A"}
+	mux.HandleFunc("GET /api/users/me", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, authHandler.GetProfile))
+	mux.HandleFunc("POST /api/users/me/request-update", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, authHandler.RequestAccountUpdate))
+	mux.HandleFunc("PUT /api/users/me", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, authHandler.UpdateAccount))
+	mux.HandleFunc("POST /api/users/me/update", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, authHandler.UpdateAccount))
 
 	// rute za upravljanje kvotama skladista (RK podnosi zahtev, A pregleda korisnike i odobrava/odbija zahteve)
 	mux.HandleFunc("POST /api/users/quota-requests", auth.Middleware(cfg.JWTSecret, quotaHandler.SubmitQuotaRequest))

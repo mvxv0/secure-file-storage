@@ -27,3 +27,14 @@ func TestValidateStrongPassword(t *testing.T) {
 	}
 }
 
+func TestValidateRegistrationInputValidation(t *testing.T) {
+	// XSS pokusaj u imenu
+	if err := ValidateRegistration("<script>alert(1)</script>", "Markovic", "marko@primer.com", "Sigurna123!", "Sigurna123!"); err != ErrUnsafeCharacters {
+		t.Errorf("ocekivana greska ErrUnsafeCharacters za XSS payload, dobijeno: %v", err)
+	}
+	// NoSQL injection pokusaj
+	if err := ValidateRegistration("Marko", "Markovic", "marko$ne@primer.com", "Sigurna123!", "Sigurna123!"); err != ErrUnsafeCharacters {
+		t.Errorf("ocekivana greska ErrUnsafeCharacters za NoSQL payload, dobijeno: %v", err)
+	}
+}
+
