@@ -84,11 +84,12 @@ func main() {
 	mux.HandleFunc("POST /api/auth/magic-link", authHandler.RequestMagicLink)
 	mux.HandleFunc("POST /api/auth/magic-link/verify", authHandler.VerifyMagicLink)
 
-	// rute za pregled i izmenu podataka korisnickog naloga nakon prijave uz potvrdu putem emaila
-	mux.HandleFunc("GET /api/users/me", auth.Middleware(cfg.JWTSecret, authHandler.GetProfile))
-	mux.HandleFunc("POST /api/users/me/request-update", auth.Middleware(cfg.JWTSecret, authHandler.RequestAccountUpdate))
-	mux.HandleFunc("PUT /api/users/me", auth.Middleware(cfg.JWTSecret, authHandler.UpdateAccount))
-	mux.HandleFunc("POST /api/users/me/update", auth.Middleware(cfg.JWTSecret, authHandler.UpdateAccount))
+	// rute za pregled i izmenu podataka korisnickog naloga nakon prijave uz potvrdu putem emaila i kontrolu uloge ([US 09.01])
+	rkOrAdmin := []string{"RK", "A"}
+	mux.HandleFunc("GET /api/users/me", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, authHandler.GetProfile))
+	mux.HandleFunc("POST /api/users/me/request-update", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, authHandler.RequestAccountUpdate))
+	mux.HandleFunc("PUT /api/users/me", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, authHandler.UpdateAccount))
+	mux.HandleFunc("POST /api/users/me/update", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, authHandler.UpdateAccount))
 
 	// interne rute za sinhronu komunikaciju sa drugim mikroservisima (zahtev 2.5)
 	mux.HandleFunc("GET /internal/users/{id}/quota", internalHandler.GetUserQuota)

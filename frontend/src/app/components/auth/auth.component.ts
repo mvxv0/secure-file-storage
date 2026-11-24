@@ -92,6 +92,26 @@ export class AuthComponent implements OnInit {
   // --- LOGIN ---
   onLoginSubmit(): void {
     this.clearMessages();
+
+    // [US 09.02] Klijentska validacija ulaznih podataka pre slanja na server
+    if (this.loginStep() === 'credentials') {
+      const email = this.loginEmail.trim();
+      const pass = this.loginPassword.trim();
+      if (!email || !pass) {
+        this.errorMessage.set('Obavezna polja ne mogu biti prazna: unesite email i lozinku.');
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        this.errorMessage.set('Format email adrese nije validan.');
+        return;
+      }
+    } else {
+      if (!/^\d{6}$/.test(this.loginOtpCode.trim())) {
+        this.errorMessage.set('OTP kod mora sadrzati tacno 6 cifara.');
+        return;
+      }
+    }
+
     this.isLoading.set(true);
 
     if (this.loginStep() === 'credentials') {
@@ -134,6 +154,42 @@ export class AuthComponent implements OnInit {
   // --- REGISTRACIJA ---
   onRegisterSubmit(): void {
     this.clearMessages();
+
+    // [US 09.02] Klijentska validacija ulaznih podataka (prazna polja, duzina, format, specijalni karakteri)
+    const first = this.regFirstName.trim();
+    const last = this.regLastName.trim();
+    const email = this.regEmail.trim();
+    if (!first || !last || !email || !this.regPassword || !this.regConfirmPassword) {
+      this.errorMessage.set('Sva obavezna polja moraju biti popunjena.');
+      return;
+    }
+    if (first.length < 2 || first.length > 50 || last.length < 2 || last.length > 50) {
+      this.errorMessage.set('Ime i prezime moraju imati izmedju 2 i 50 karaktera.');
+      return;
+    }
+    if (/[<>${}]/.test(first) || /[<>${}]/.test(last) || /[<>${}]/.test(email)) {
+      this.errorMessage.set('Uneta polja sadrze nedozvoljene specijalne karaktere.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      this.errorMessage.set('Format email adrese nije validan.');
+      return;
+    }
+    if (this.regPassword !== this.regConfirmPassword) {
+      this.errorMessage.set('Lozinka i ponovljena lozinka se ne poklapaju.');
+      return;
+    }
+    if (
+      this.regPassword.length < 8 ||
+      !/[A-Z]/.test(this.regPassword) ||
+      !/[a-z]/.test(this.regPassword) ||
+      !/[0-9]/.test(this.regPassword) ||
+      !/[^A-Za-z0-9]/.test(this.regPassword)
+    ) {
+      this.errorMessage.set('Lozinka mora imati bar 8 karaktera, veliko i malo slovo, broj i specijalan znak.');
+      return;
+    }
+
     this.isLoading.set(true);
 
     const payload = {

@@ -107,3 +107,42 @@ func (s *FolderService) GetFolderDetails(ctx context.Context, ownerID, folderID 
 	return folder, nil
 }
 
+// ValidateFolderName proverava naziv foldera (duzina, nedozvoljeni karakteri, path traversal)
+func ValidateFolderName(rawName string) (string, error) {
+	name := strings.TrimSpace(rawName)
+	if name == "" || len(name) > 100 || strings.ContainsAny(name, "/\\<>:\"|?*") || name == "." || name == ".." {
+		return "", ErrInvalidFolderName
+	}
+	return name, nil
+}
+
+// RenameFolder menja naziv postojeceg foldera uz proveru vlasnistva, validaciju i sprecavanje duplikata (zahtev 1.6)
+func (s *FolderService) RenameFolder(ctx context.Context, ownerID, folderID, newName string) (*model.Folder, error) {
+	cleanName, err := ValidateFolderName(newName)
+	if err != nil {
+		return nil, err
+	}
+
+	folder, err := s.repo.FindByID(ctx, folderID)
+	if err != nil {
+		return nil, err
+	}
+	if folder.OwnerID != ownerID {
+		return nil, ErrParentNotOwned
+	}
+
+	if folder.Name == cleanName {
+		return folder, nil
+	}
+
+	existing, err := s.repo.FindByNameAndParent(ctx, ownerID, folder.ParentFolderID, cleanName)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil && existing.ID != folder.ID {
+		return nil, repository.ErrFolderAlreadyExists
+	}
+
+	return s.repo.Rename(ctx, folderID, cleanName)
+}
+

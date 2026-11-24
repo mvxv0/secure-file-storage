@@ -117,3 +117,60 @@ func (h *FolderHandler) GetFolderContents(w http.ResponseWriter, r *http.Request
 		"quotaUsed":       quotaUsed,
 	})
 }
+
+type RenameFolderInput struct {
+	Name string `json:"name"`
+}
+
+// HandleFolderByID obradjuje GET /api/folders/{id} (pregled sadrzaja) i PATCH/PUT /api/folders/{id} ili /api/folders/{id}/rename (preimenovanje - zahtev 1.6)
+func (h *FolderHandler) HandleFolderByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		h.GetFolderContents(w, r)
+		return
+	}
+
+	if r.Method != http.MethodPatch && r.Method != http.MethodPut && r.Method != http.MethodPost {
+		httputil.WriteError(w, http.StatusMethodNotAllowed, "Dozvoljen je GET, PATCH, PUT ili POST metod")
+		return
+	}
+
+	claims, ok := auth.GetClaims(r)
+	if !ok || claims.UserID == "" {
+		httputil.WriteError(w, http.StatusUnauthorized, "Neautorizovan pristup")
+		return
+	}
+
+	trimmed := strings.TrimPrefix(r.URL.Path, "/api/folders/")
+	parts := strings.Split(strings.Trim(trimmed, "/"), "/")
+	if len(parts) == 0 || parts[0] == "" {
+		httputil.WriteError(w, http.StatusBadRequest, "ID foldera je obavezan")
+		return
+	}
+
+	folderID := parts[0]
+
+	var input RenameFolderInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, "Nevalidan JSON format tela zahteva")
+		return
+	}
+
+	updated, err := h.folderService.RenameFolder(r.Context(), claims.UserID, folderID, input.Name)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidFolderName):
+			httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, repository.ErrFolderNotFound):
+			httputil.WriteError(w, http.StatusNotFound, err.Error())
+		case errors.Is(err, service.ErrParentNotOwned):
+			httputil.WriteError(w, http.StatusForbidden, err.Error())
+		case errors.Is(err, repository.ErrFolderAlreadyExists):
+			httputil.WriteError(w, http.StatusConflict, err.Error())
+		default:
+			httputil.WriteError(w, http.StatusInternalServerError, "Greska pri preimenovanju foldera: "+err.Error())
+		}
+		return
+	}
+
+	httputil.WriteSuccess(w, http.StatusOK, "Naziv foldera je uspesno izmenjen", updated)
+}

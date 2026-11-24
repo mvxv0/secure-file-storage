@@ -87,3 +87,15 @@ func TestCalculateChecksum(t *testing.T) {
 	}
 }
 
+func TestValidateFileNameForRename(t *testing.T) {
+	if _, err := ValidateFileName("izvestaj_2026.pdf"); err != nil {
+		t.Fatalf("ocekivan validan naziv datoteke, dobijena greska: %v", err)
+	}
+	if _, err := ValidateFileName("../hack.txt"); !errors.Is(err, ErrInvalidFileName) {
+		t.Fatalf("ocekivana greska ErrInvalidFileName za path traversal, dobijeno: %v", err)
+	}
+	if _, err := ValidateFileName("skripta.exe"); !errors.Is(err, ErrDisallowedFileExt) {
+		t.Fatalf("ocekivana greska ErrDisallowedFileExt za .exe prilikom preimenovanja, dobijeno: %v", err)
+	}
+}
+

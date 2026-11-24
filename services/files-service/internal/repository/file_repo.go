@@ -77,6 +77,37 @@ func (r *FileRepository) UpdateVersion(ctx context.Context, file *model.FileMeta
 	return nil
 }
 
+// Rename azurira naziv postojece datoteke u bazi (zahtev 1.6)
+func (r *FileRepository) Rename(ctx context.Context, id string, newName string) (*model.FileMetadata, error) {
+	oid, err := primitive.ObjectIDFromHex(id)
+	var filter bson.M
+	if err == nil {
+		filter = bson.M{"_id": oid}
+	} else {
+		filter = bson.M{"_id": id}
+	}
+
+	now := time.Now().UTC()
+	update := bson.M{
+		"$set": bson.M{
+			"name":       newName,
+			"updated_at": now,
+		},
+	}
+
+	res, err := r.db.Collection("files").UpdateOne(ctx, filter, update)
+	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return nil, ErrFileAlreadyExists
+		}
+		return nil, err
+	}
+	if res.MatchedCount == 0 {
+		return nil, ErrFileNotFound
+	}
+	return r.FindByID(ctx, id)
+}
+
 // FindByID pronalazi metapodatke datoteke po ID-ju
 func (r *FileRepository) FindByID(ctx context.Context, id string) (*model.FileMetadata, error) {
 	oid, err := primitive.ObjectIDFromHex(id)
