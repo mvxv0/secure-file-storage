@@ -54,3 +54,16 @@ export interface NotificationItem {
   createdAt: string;
 }
 
+export interface QuotaRequest {
+  id: string;
+  userId: string;
+  userEmail: string;
+  currentQuota: number;
+  requestedQuota: number;
+  reason?: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  resolvedBy?: string;
+  resolvedAt?: string;
+  createdAt: string;
+}
+

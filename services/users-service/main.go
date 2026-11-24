@@ -38,9 +38,21 @@ func main() {
 
 	// inicijalizacija slojeva: repository -> service -> handler
 	userRepo := repository.NewUserRepository(mongoDB.DB)
+	quotaRepo := repository.NewQuotaRepository(mongoDB.DB)
 	authService := service.NewAuthService(userRepo, mailClient, cfg)
+	quotaService := service.NewQuotaService(userRepo, quotaRepo)
 	authHandler := handler.NewAuthHandler(authService)
+	quotaHandler := handler.NewQuotaHandler(quotaService)
 	internalHandler := handler.NewInternalHandler(userRepo)
+
+	// automatsko kreiranje podrazumevanog admin naloga ako ne postoji u bazi
+	if mongoDB != nil && mongoDB.DB != nil {
+		seedCtx, seedCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := quotaService.EnsureDefaultAdmin(seedCtx, cfg); err != nil {
+			log.Printf("[USERS-SERVICE] Upozorenje: neuspesno kreiranje podrazumevanog admin naloga: %v", err)
+		}
+		seedCancel()
+	}
 
 	mux := http.NewServeMux()
 
@@ -90,6 +102,14 @@ func main() {
 	mux.HandleFunc("POST /api/users/me/request-update", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, authHandler.RequestAccountUpdate))
 	mux.HandleFunc("PUT /api/users/me", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, authHandler.UpdateAccount))
 	mux.HandleFunc("POST /api/users/me/update", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, authHandler.UpdateAccount))
+
+	// rute za upravljanje kvotama skladista (RK podnosi zahtev, A pregleda korisnike i odobrava/odbija zahteve)
+	mux.HandleFunc("POST /api/users/quota-requests", auth.Middleware(cfg.JWTSecret, quotaHandler.SubmitQuotaRequest))
+	mux.HandleFunc("GET /api/users/quota-requests/me", auth.Middleware(cfg.JWTSecret, quotaHandler.GetMyQuotaRequests))
+	mux.HandleFunc("GET /api/users", auth.Middleware(cfg.JWTSecret, quotaHandler.GetAllUsers))
+	mux.HandleFunc("GET /api/users/quota-requests", auth.Middleware(cfg.JWTSecret, quotaHandler.GetAllQuotaRequests))
+	mux.HandleFunc("POST /api/users/quota-requests/{id}/approve", auth.Middleware(cfg.JWTSecret, quotaHandler.ApproveQuotaRequest))
+	mux.HandleFunc("POST /api/users/quota-requests/{id}/reject", auth.Middleware(cfg.JWTSecret, quotaHandler.RejectQuotaRequest))
 
 	// interne rute za sinhronu komunikaciju sa drugim mikroservisima (zahtev 2.5)
 	mux.HandleFunc("GET /internal/users/{id}/quota", internalHandler.GetUserQuota)
