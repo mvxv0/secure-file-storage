@@ -80,6 +80,10 @@ func main() {
 	mux.HandleFunc("POST /api/auth/forgot-password", authHandler.ForgotPassword)
 	mux.HandleFunc("POST /api/auth/reset-password", authHandler.ResetPassword)
 
+	// rute za povracaj naloga upotrebom magicnog linka (zahtev 1.3)
+	mux.HandleFunc("POST /api/auth/magic-link", authHandler.RequestMagicLink)
+	mux.HandleFunc("POST /api/auth/magic-link/verify", authHandler.VerifyMagicLink)
+
 	// rute za pregled i izmenu podataka korisnickog naloga nakon prijave uz potvrdu putem emaila i kontrolu uloge ([US 09.01])
 	rkOrAdmin := []string{"RK", "A"}
 	mux.HandleFunc("GET /api/users/me", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, authHandler.GetProfile))

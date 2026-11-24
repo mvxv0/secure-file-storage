@@ -80,3 +80,13 @@ func TestMinimumPasswordAgeForReset(t *testing.T) {
 		t.Errorf("Lozinka stara 25 sati mora biti dozvoljena za promenu")
 	}
 }
+
+func TestGenerateMagicLinkToken(t *testing.T) {
+	token, err := generateSecureHexToken(16)
+	if err != nil {
+		t.Fatalf("neocekivana greska pri generisanju magic link tokena: %v", err)
+	}
+	if len(token) != 32 {
+		t.Errorf("ocekivana duzina hex tokena 32, dobijeno %d", len(token))
+	}
+}

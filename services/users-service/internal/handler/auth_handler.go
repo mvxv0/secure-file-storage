@@ -370,3 +370,84 @@ func (h *AuthHandler) UpdateAccount(w http.ResponseWriter, r *http.Request) {
 
 	httputil.WriteSuccess(w, http.StatusOK, "Podaci korisnickog naloga su uspesno izmenjeni!", updatedUser)
 }
+
+type MagicLinkRequestInput struct {
+	Email string `json:"email"`
+}
+
+// RequestMagicLink salje magicni link za povracaj naloga na email adresu korisnika (zahtev 1.3)
+func (h *AuthHandler) RequestMagicLink(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		httputil.WriteError(w, http.StatusMethodNotAllowed, "Dozvoljen je samo POST metod")
+		return
+	}
+
+	var input MagicLinkRequestInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, "Nevalidan JSON format tela zahteva")
+		return
+	}
+
+	err := h.authService.RequestMagicLink(r.Context(), input.Email)
+	if err != nil {
+		switch {
+		case errors.Is(err, repository.ErrUserNotFound):
+			httputil.WriteError(w, http.StatusNotFound, err.Error())
+		case errors.Is(err, service.ErrUserNotVerified):
+			httputil.WriteError(w, http.StatusForbidden, err.Error())
+		default:
+			httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+
+	httputil.WriteSuccess(w, http.StatusOK, "Magicni link za povracaj naloga je poslat na vasu email adresu.", map[string]interface{}{
+		"email": strings.ToLower(strings.TrimSpace(input.Email)),
+	})
+}
+
+type VerifyMagicLinkInput struct {
+	Email string `json:"email"`
+	Token string `json:"token"`
+}
+
+// VerifyMagicLink vrsi autentifikaciju korisnika preko magicnog linka i vraca JWT token (zahtev 1.3)
+func (h *AuthHandler) VerifyMagicLink(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		httputil.WriteError(w, http.StatusMethodNotAllowed, "Dozvoljen je samo POST metod")
+		return
+	}
+
+	var input VerifyMagicLinkInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, "Nevalidan JSON format tela zahteva")
+		return
+	}
+
+	res, err := h.authService.VerifyMagicLink(r.Context(), input.Email, input.Token)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidToken),
+			errors.Is(err, service.ErrInvalidCredentials):
+			httputil.WriteError(w, http.StatusUnauthorized, err.Error())
+		case errors.Is(err, service.ErrUserNotVerified):
+			httputil.WriteError(w, http.StatusForbidden, err.Error())
+		default:
+			httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+
+	httputil.WriteSuccess(w, http.StatusOK, "Uspesan povracaj naloga i prijava putem magicnog linka!", map[string]interface{}{
+		"token": res.Token,
+		"user": map[string]interface{}{
+			"id":         res.User.ID,
+			"email":      res.User.Email,
+			"firstName":  res.User.FirstName,
+			"lastName":   res.User.LastName,
+			"role":       res.User.Role,
+			"quotaLimit": res.User.QuotaLimit,
+			"quotaUsed":  res.User.QuotaUsed,
+		},
+	})
+}
