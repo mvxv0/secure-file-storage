@@ -169,6 +169,8 @@ services:
       ANALYTICS_SERVICE_URL: http://analytics-service:8085
     ports:
       - "8080:8080"
+    volumes:
+      - ./certs:/app/certs
     depends_on:
       - users-service
       - files-service

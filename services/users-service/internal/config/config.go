@@ -47,7 +47,7 @@ func Load() *Config {
 		MaxPasswordAge:       time.Duration(env.GetInt("MAX_PASSWORD_AGE_SECONDS", 5184000)) * time.Second,
 		AccountLockDuration:  time.Duration(env.GetInt("ACCOUNT_LOCK_DURATION_SECONDS", 300)) * time.Second,
 		DefaultStorageQuota:  env.GetInt64("DEFAULT_STORAGE_QUOTA_BYTES", 104857600), // 100 MB pocetna kvota
-		FrontendURL:          env.GetString("FRONTEND_URL", "http://localhost:5173"),
+		FrontendURL:          env.GetString("FRONTEND_URL", "https://localhost:4200"),
 		AdminEmail:           env.GetString("ADMIN_EMAIL", ""),
 		AdminPassword:        env.GetString("ADMIN_PASSWORD", ""),
 		AdminFirstName:       env.GetString("ADMIN_FIRST_NAME", "Admin"),

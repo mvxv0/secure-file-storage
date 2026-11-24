@@ -14,7 +14,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # ---- runtime faza ----
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates tzdata \
-    && addgroup -S app && adduser -S app -G app
+    && addgroup -S app && adduser -S app -G app \
+    && mkdir -p /app/certs && chown -R app:app /app
 
 WORKDIR /app
 COPY --from=build /out/app /app/app
