@@ -10,6 +10,7 @@
       <button [class.active]="currentTab() === 'login'" (click)="setTab('login')">Prijava</button>
       <button [class.active]="currentTab() === 'register'" (click)="setTab('register')">Registracija</button>
       <button [class.active]="currentTab() === 'verify'" (click)="setTab('verify')">Potvrda koda</button>
+      <button [class.active]="currentTab() === 'recovery'" (click)="setTab('recovery')">Povracaj / Reset</button>
     </div>
 
     <!-- Alert poruke -->
@@ -114,6 +115,109 @@
           {{ isLoading() ? 'Potvrdjujem...' : 'Aktiviraj nalog' }}
         </button>
       </form>
+    </div>
+
+    <!-- TAB 4: POVRACAJ NALOGA MAGICNIM LINKOM (1.3) & ZABORAVLJENA LOZINKA (1.2) -->
+    <div *ngIf="currentTab() === 'recovery'" class="form-container">
+      <div class="tab-header" style="margin-bottom: 16px;">
+        <button type="button" [class.active]="recoveryMode() === 'magic'" (click)="setRecoveryMode('magic')">
+          Magicni link (1.3)
+        </button>
+        <button type="button" [class.active]="recoveryMode() === 'reset'" (click)="setRecoveryMode('reset')">
+          Reset lozinke (1.2)
+        </button>
+      </div>
+
+      <!-- 1.3 POVRACAJ NALOGA MAGICNIM LINKOM -->
+      <div *ngIf="recoveryMode() === 'magic'">
+        <div *ngIf="magicStep() === 'request'">
+          <p class="info-text">
+            Unesite email adresu naloga za autentifikaciju i povracaj naloga putem magicnog linka:
+          </p>
+          <form (ngSubmit)="onRequestMagicLink()">
+            <div class="form-group">
+              <label for="magicEmail">Email adresa</label>
+              <input id="magicEmail" type="email" [(ngModel)]="magicEmail" name="magicEmail" placeholder="petar@example.com" required />
+            </div>
+            <button type="submit" class="btn btn-primary" [disabled]="isLoading() || !magicEmail.trim()">
+              {{ isLoading() ? 'Saljem...' : 'Posalji magicni link' }}
+            </button>
+            <button type="button" class="btn btn-secondary" (click)="magicStep.set('verify')">
+              Vec imam token iz mejla
+            </button>
+          </form>
+        </div>
+
+        <div *ngIf="magicStep() === 'verify'">
+          <p class="info-text">
+            Unesite token magicnog linka poslat na <strong>{{ magicEmail }}</strong> (ili kliknite na link u MailHog-u):
+          </p>
+          <form (ngSubmit)="onVerifyMagicLink()">
+            <div class="form-group">
+              <label for="magicEmailVerify">Email adresa</label>
+              <input id="magicEmailVerify" type="email" [(ngModel)]="magicEmail" name="magicEmailVerify" required />
+            </div>
+            <div class="form-group">
+              <label for="magicToken">Token magicnog linka</label>
+              <input id="magicToken" type="text" [(ngModel)]="magicToken" name="magicToken" placeholder="32-karakterni hex token" required />
+            </div>
+            <button type="submit" class="btn btn-success" [disabled]="isLoading() || !magicToken.trim()">
+              {{ isLoading() ? 'Proveravam...' : 'Prijavi se magicnim linkom' }}
+            </button>
+            <button type="button" class="btn btn-secondary" (click)="magicStep.set('request')">
+              Nazad
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- 1.2 ZABORAVLJENA LOZINKA / RESET LOZINKE -->
+      <div *ngIf="recoveryMode() === 'reset'">
+        <div *ngIf="resetStep() === 'request'">
+          <p class="info-text">
+            Unesite email adresu za slanje kratkotrajnog linka za promenu lozinke (lozinka mora biti bar 24h stara):
+          </p>
+          <form (ngSubmit)="onForgotPasswordSubmit()">
+            <div class="form-group">
+              <label for="resetEmail">Email adresa</label>
+              <input id="resetEmail" type="email" [(ngModel)]="resetEmail" name="resetEmail" placeholder="petar@example.com" required />
+            </div>
+            <button type="submit" class="btn btn-primary" [disabled]="isLoading() || !resetEmail.trim()">
+              {{ isLoading() ? 'Saljem...' : 'Posalji link za reset lozinke' }}
+            </button>
+            <button type="button" class="btn btn-secondary" (click)="resetStep.set('confirm')">
+              Vec imam token za reset
+            </button>
+          </form>
+        </div>
+
+        <div *ngIf="resetStep() === 'confirm'">
+          <form (ngSubmit)="onResetPasswordSubmit()">
+            <div class="form-group">
+              <label for="resetEmailConfirm">Email adresa</label>
+              <input id="resetEmailConfirm" type="email" [(ngModel)]="resetEmail" name="resetEmailConfirm" required />
+            </div>
+            <div class="form-group">
+              <label for="resetToken">Token sa emaila</label>
+              <input id="resetToken" type="text" [(ngModel)]="resetToken" name="resetToken" placeholder="Token iz mejla" required />
+            </div>
+            <div class="form-group">
+              <label for="resetNewPassword">Nova lozinka</label>
+              <input id="resetNewPassword" type="password" [(ngModel)]="resetNewPassword" name="resetNewPassword" placeholder="Min. 8 karaktera, veliko slovo, broj, znak" required />
+            </div>
+            <div class="form-group">
+              <label for="resetConfirmPassword">Ponovite novu lozinku</label>
+              <input id="resetConfirmPassword" type="password" [(ngModel)]="resetConfirmPassword" name="resetConfirmPassword" placeholder="••••••••" required />
+            </div>
+            <button type="submit" class="btn btn-success" [disabled]="isLoading() || !resetToken.trim()">
+              {{ isLoading() ? 'Menjam lozinku...' : 'Sacuvaj novu lozinku' }}
+            </button>
+            <button type="button" class="btn btn-secondary" (click)="resetStep.set('request')">
+              Nazad
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
   </div>
 </div>

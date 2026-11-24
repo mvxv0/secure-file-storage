@@ -582,6 +582,112 @@ func (s *AuthService) UpdateAccount(ctx context.Context, email string, input Upd
 	return s.repo.UpdateUserProfile(ctx, email, firstName, lastName)
 }
 
+// ============================================================================
+// 1.3 Povracaj naloga upotrebom magicnog linka (Magic Link)
+// ============================================================================
+
+// RequestMagicLink generise kratkotrajni magicni link za povracaj naloga i salje ga na email korisnika (zahtev 1.3)
+func (s *AuthService) RequestMagicLink(ctx context.Context, email string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return errors.New("email adresa je obavezna")
+	}
+
+	user, err := s.repo.FindByEmail(ctx, email)
+	if err != nil {
+		return err
+	}
+
+	if !user.IsVerified {
+		return ErrUserNotVerified
+	}
+
+	magicToken, err := generateSecureHexToken(16) // 32 hex karaktera
+	if err != nil {
+		return fmt.Errorf("greska pri generisanju magicnog linka: %w", err)
+	}
+
+	_ = s.repo.InvalidateExistingTokens(ctx, user.Email, model.TokenMagicLink)
+
+	tokenHash, err := bcrypt.GenerateFromPassword([]byte(magicToken), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("greska pri hesiranju magicnog tokena: %w", err)
+	}
+
+	now := time.Now().UTC()
+	authToken := &model.AuthToken{
+		Email:     user.Email,
+		CodeHash:  string(tokenHash),
+		Type:      model.TokenMagicLink,
+		ExpiresAt: now.Add(s.cfg.ResetTokenExpiration),
+	}
+
+	if err := s.repo.SaveAuthToken(ctx, authToken); err != nil {
+		return fmt.Errorf("greska pri cuvanju magicnog tokena: %w", err)
+	}
+
+	magicLink := fmt.Sprintf("%s/auth?magicEmail=%s&magicToken=%s", strings.TrimRight(s.cfg.FrontendURL, "/"), user.Email, magicToken)
+
+	subject := "Magicni link za povracaj naloga (1.3)"
+	body := fmt.Sprintf(
+		"Pozdrav %s,\n\nZatrazili ste povracaj naloga i autentifikaciju putem magicnog linka.\n\n"+
+			"Vas magicni link za prijavu:\n%s\n\n"+
+			"Kod / token magicnog linka: %s\n\n"+
+			"Link je jednokratan i vazi %d minuta (%s).\n",
+		user.FirstName, magicLink, magicToken, int(s.cfg.ResetTokenExpiration.Minutes()), s.cfg.ResetTokenExpiration,
+	)
+
+	_ = s.mailer.SendEmail(user.Email, subject, body)
+	return nil
+}
+
+// VerifyMagicLink proverava token magicnog linka, otkljucava nalog ako je bio zakljucan i izdaje JWT token (zahtev 1.3)
+func (s *AuthService) VerifyMagicLink(ctx context.Context, email, tokenStr string) (*AuthResponseData, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	tokenStr = strings.TrimSpace(tokenStr)
+
+	if email == "" || tokenStr == "" {
+		return nil, errors.New("email i token magicnog linka su obavezni")
+	}
+
+	user, err := s.repo.FindByEmail(ctx, email)
+	if err != nil {
+		return nil, ErrInvalidCredentials
+	}
+
+	if !user.IsVerified {
+		return nil, ErrUserNotVerified
+	}
+
+	tokenDoc, err := s.repo.FindValidToken(ctx, email, model.TokenMagicLink)
+	if err != nil {
+		return nil, ErrInvalidToken
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(tokenDoc.CodeHash), []byte(tokenStr)); err != nil {
+		return nil, ErrInvalidToken
+	}
+
+	_ = s.repo.MarkTokenUsed(ctx, tokenDoc.ID)
+	_ = s.repo.ResetFailedLogins(ctx, email)
+
+	jwtToken, err := auth.GenerateToken(
+		s.cfg.JWTSecret,
+		user.ID,
+		user.Email,
+		string(user.Role),
+		s.cfg.JWTExpiration,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("greska pri generisanju JWT tokena: %w", err)
+	}
+
+	return &AuthResponseData{
+		Token: jwtToken,
+		User:  user,
+	}, nil
+}
+
 // generateNumericCode generise siguran nasumicni niz cifara date duzine
 func generateNumericCode(length int) (string, error) {
 	code := make([]byte, length)
