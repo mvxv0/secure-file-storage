@@ -7,7 +7,7 @@ import { ApiResponse, NotificationItem } from '../models/types';
   providedIn: 'root'
 })
 export class NotificationService {
-  private apiUrl = 'http://localhost:8080/api/notifications';
+  private apiUrl = 'https://localhost:8080/api/notifications';
 
   constructor(private http: HttpClient) {}
 

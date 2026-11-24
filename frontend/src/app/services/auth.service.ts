@@ -8,8 +8,8 @@ import { Router } from '@angular/router';
   providedIn: 'root'
 })
 export class AuthService {
-  private apiUrl = 'http://localhost:8080/api/auth';
-  private usersUrl = 'http://localhost:8080/api/users';
+  private apiUrl = 'https://localhost:8080/api/auth';
+  private usersUrl = 'https://localhost:8080/api/users';
   
   currentUser = signal<User | null>(this.getStoredUser());
 
