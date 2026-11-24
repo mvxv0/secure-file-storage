@@ -35,6 +35,13 @@ func main() {
 	// api-gateway slusa na portu 8080 (glavna ulazna tacka za klijenta / postman)
 	port := env.GetString("API_GATEWAY_PORT", "8080")
 	frontendURL := env.GetString("FRONTEND_URL", "http://localhost:5173")
+	jwtSecret := env.GetString("JWT_SECRET", "dev-secret-key-promeni-u-produkciji")
+
+	// parametri za DoS zastitu / rate limiting
+	rateLimitMax := env.GetInt("RATE_LIMIT_MAX_REQUESTS", 60)
+	rateLimitAuthMax := env.GetInt("RATE_LIMIT_AUTH_MAX_REQUESTS", 20)
+	rateLimitWindow := time.Duration(env.GetInt("RATE_LIMIT_WINDOW_SECONDS", 60)) * time.Second
+	rateLimiter := NewRateLimiter(rateLimitMax, rateLimitAuthMax, rateLimitWindow, jwtSecret)
 
 	// adrese i portovi mikroservisa na koje gateway prosledjuje zahteve
 	usersURL := env.GetString("USERS_SERVICE_URL", "http://localhost:8081")                 // port 8081
@@ -84,13 +91,14 @@ func main() {
 
 	server := &http.Server{
 		Addr:         ":" + port,
-		Handler:      commonhttp.CORSMiddleware(frontendURL, mux),
+		Handler:      commonhttp.CORSMiddleware(frontendURL, rateLimiter.Middleware(mux)),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
-	log.Printf("[API-GATEWAY] Pokrenut na http://localhost:%s (Users -> %s, Files -> %s)", port, usersURL, filesURL)
+	log.Printf("[API-GATEWAY] Pokrenut na http://localhost:%s (Users -> %s, Files -> %s, RateLimit: %d req/%s, Auth: %d req/%s)",
+		port, usersURL, filesURL, rateLimitMax, rateLimitWindow, rateLimitAuthMax, rateLimitWindow)
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("[API-GATEWAY] Greska pri pokretanju servera: %v", err)
 	}
