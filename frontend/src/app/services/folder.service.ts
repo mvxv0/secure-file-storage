@@ -7,7 +7,7 @@ import { ApiResponse, Folder, FolderContentResponse } from '../models/types';
   providedIn: 'root'
 })
 export class FolderService {
-  private apiUrl = 'http://localhost:8080/api/folders';
+  private apiUrl = 'https://localhost:8080/api/folders';
 
   constructor(private http: HttpClient) {}
 

@@ -7,7 +7,7 @@ import { ApiResponse, QuotaRequest, User } from '../models/types';
   providedIn: 'root'
 })
 export class QuotaService {
-  private apiUrl = 'http://localhost:8080/api/users';
+  private apiUrl = 'https://localhost:8080/api/users';
 
   constructor(private http: HttpClient) {}
 

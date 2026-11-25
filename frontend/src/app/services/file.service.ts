@@ -7,7 +7,7 @@ import { ApiResponse, FileMetadata } from '../models/types';
   providedIn: 'root'
 })
 export class FileService {
-  private apiUrl = 'http://localhost:8080/api/files';
+  private apiUrl = 'https://localhost:8080/api/files';
 
   constructor(private http: HttpClient) {}
 
