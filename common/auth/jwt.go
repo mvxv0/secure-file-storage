@@ -116,6 +116,28 @@ func Middleware(secret string, next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// RequireRoles ([US 09.01] Kontrola pristupa po ulozi / zahtev 2.17)
+// Proverava autentifikaciju (JWT token) i autorizaciju po ulozi (npr. "RK" za redovnog korisnika, "A" za administratora).
+// Neautentifikovani zahtevi dobijaju 401 Unauthorized, a korisnici bez odgovarajuce uloge dobijaju 403 Forbidden.
+func RequireRoles(secret string, allowedRoles []string, next http.HandlerFunc) http.HandlerFunc {
+	return Middleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := GetClaims(r)
+		if !ok || claims.UserID == "" {
+			httputil.WriteError(w, http.StatusUnauthorized, "Neautorizovan pristup: korisnik nije autentifikovan")
+			return
+		}
+
+		for _, role := range allowedRoles {
+			if strings.EqualFold(claims.Role, role) {
+				next(w, r)
+				return
+			}
+		}
+
+		httputil.WriteError(w, http.StatusForbidden, "Zabranjen pristup: vasa uloga nema dozvolu za ovu funkcionalnost")
+	})
+}
+
 func GetClaims(r *http.Request) (*Claims, bool) {
 	claims, ok := r.Context().Value(UserClaimsKey).(*Claims)
 	return claims, ok

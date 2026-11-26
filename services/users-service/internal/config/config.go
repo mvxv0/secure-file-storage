@@ -23,19 +23,23 @@ type Config struct {
 	AccountLockDuration  time.Duration
 	DefaultStorageQuota  int64
 	FrontendURL          string
+	AdminEmail           string
+	AdminPassword        string
+	AdminFirstName       string
+	AdminLastName        string
 }
 
 func Load() *Config {
 	env.Load()
 
 	return &Config{
-		Port:                 env.GetString("USERS_SERVICE_PORT", "8081"),                           // port na kom se dize users-service
+		Port:                 env.GetString("USERS_SERVICE_PORT", "8081"),                            // port na kom se dize users-service
 		MongoURI:             env.GetString("MONGO_URI", "mongodb://admin:password@localhost:27017"), // mongo u dockeru na 27017
-		MongoDBName:          env.GetString("MONGO_DB_USERS", "users_db"),                           // naziv mongo baze za korisnike
-		SMTPHost:             env.GetString("SMTP_HOST", "localhost"),                               // mailhog host
-		SMTPPort:             env.GetString("SMTP_PORT", "1025"),                                    // mailhog smtp port za slanje mejlova (ui je na 8025)
+		MongoDBName:          env.GetString("MONGO_DB_USERS", "users_db"),                            // naziv mongo baze za korisnike
+		SMTPHost:             env.GetString("SMTP_HOST", "localhost"),                                // mailhog host
+		SMTPPort:             env.GetString("SMTP_PORT", "1025"),                                     // mailhog smtp port za slanje mejlova (ui je na 8025)
 		SMTPFrom:             env.GetString("SMTP_FROM", "noreply@secure-storage.local"),
-		JWTSecret:            env.GetString("JWT_SECRET", "dev-secret-key-promeni-u-produkciji"),
+		JWTSecret:            env.GetString("JWT_SECRET", ""),
 		JWTExpiration:        time.Duration(env.GetInt("JWT_EXPIRATION_HOURS", 24)) * time.Hour,
 		OTPExpiration:        time.Duration(env.GetInt("OTP_EXPIRATION_SECONDS", 300)) * time.Second,
 		ResetTokenExpiration: time.Duration(env.GetInt("RESET_TOKEN_EXPIRATION_SECONDS", 900)) * time.Second,
@@ -43,6 +47,10 @@ func Load() *Config {
 		MaxPasswordAge:       time.Duration(env.GetInt("MAX_PASSWORD_AGE_SECONDS", 5184000)) * time.Second,
 		AccountLockDuration:  time.Duration(env.GetInt("ACCOUNT_LOCK_DURATION_SECONDS", 300)) * time.Second,
 		DefaultStorageQuota:  env.GetInt64("DEFAULT_STORAGE_QUOTA_BYTES", 104857600), // 100 MB pocetna kvota
-		FrontendURL:          env.GetString("FRONTEND_URL", "http://localhost:5173"),
+		FrontendURL:          env.GetString("FRONTEND_URL", "https://localhost:4200"),
+		AdminEmail:           env.GetString("ADMIN_EMAIL", ""),
+		AdminPassword:        env.GetString("ADMIN_PASSWORD", ""),
+		AdminFirstName:       env.GetString("ADMIN_FIRST_NAME", "Admin"),
+		AdminLastName:        env.GetString("ADMIN_LAST_NAME", "Administrator"),
 	}
 }

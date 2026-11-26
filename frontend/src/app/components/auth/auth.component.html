@@ -1,0 +1,224 @@
+<div class="auth-container">
+  <div class="auth-card">
+    <div class="auth-header">
+      <h2>Secure File Storage</h2>
+      <p class="subtitle">Google Drive klon (SOA / NoSQL / IB)</p>
+    </div>
+
+    <!-- Tabovi -->
+    <div class="tab-header">
+      <button [class.active]="currentTab() === 'login'" (click)="setTab('login')">Prijava</button>
+      <button [class.active]="currentTab() === 'register'" (click)="setTab('register')">Registracija</button>
+      <button [class.active]="currentTab() === 'verify'" (click)="setTab('verify')">Potvrda koda</button>
+      <button [class.active]="currentTab() === 'recovery'" (click)="setTab('recovery')">Povracaj / Reset</button>
+    </div>
+
+    <!-- Alert poruke -->
+    <div *ngIf="errorMessage()" class="alert alert-error">
+      {{ errorMessage() }}
+    </div>
+    <div *ngIf="successMessage()" class="alert alert-success">
+      {{ successMessage() }}
+    </div>
+
+    <!-- TAB 1: LOGIN -->
+    <div *ngIf="currentTab() === 'login'" class="form-container">
+      <form (ngSubmit)="onLoginSubmit()">
+        <!-- KORAK 1: Email i lozinka -->
+        <div *ngIf="loginStep() === 'credentials'">
+          <div class="form-group">
+            <label for="loginEmail">Email adresa</label>
+            <input id="loginEmail" type="email" [(ngModel)]="loginEmail" name="loginEmail" placeholder="primer@student.uns.ac.rs" required />
+          </div>
+
+          <div class="form-group">
+            <label for="loginPassword">Lozinka</label>
+            <input id="loginPassword" type="password" [(ngModel)]="loginPassword" name="loginPassword" placeholder="••••••••" required />
+          </div>
+
+          <button type="submit" class="btn btn-primary" [disabled]="isLoading()">
+            {{ isLoading() ? 'Proveravam...' : 'Nastavi na OTP kod' }}
+          </button>
+        </div>
+
+        <!-- KORAK 2: 2FA OTP KOD -->
+        <div *ngIf="loginStep() === 'otp'">
+          <p class="info-text">
+            Unesite 6-cifreni kod poslat na adresu <strong>{{ loginEmail }}</strong>:
+          </p>
+          <div class="form-group">
+            <label for="loginOtpCode">Jednokratni kod (OTP)</label>
+            <input id="loginOtpCode" type="text" maxlength="6" [(ngModel)]="loginOtpCode" name="loginOtpCode" placeholder="123456" autofocus required />
+          </div>
+
+          <button type="submit" class="btn btn-success" [disabled]="isLoading() || loginOtpCode.length < 6">
+            {{ isLoading() ? 'Prijavljujem...' : 'Potvrdi i prijavi se' }}
+          </button>
+
+          <button type="button" class="btn btn-secondary" (click)="resetLoginStep()">
+            Nazad na lozinku
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- TAB 2: REGISTRACIJA -->
+    <div *ngIf="currentTab() === 'register'" class="form-container">
+      <form (ngSubmit)="onRegisterSubmit()">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="regFirstName">Ime</label>
+            <input id="regFirstName" type="text" [(ngModel)]="regFirstName" name="regFirstName" placeholder="Petar" required />
+          </div>
+          <div class="form-group">
+            <label for="regLastName">Prezime</label>
+            <input id="regLastName" type="text" [(ngModel)]="regLastName" name="regLastName" placeholder="Petrovic" required />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="regEmail">Email adresa</label>
+          <input id="regEmail" type="email" [(ngModel)]="regEmail" name="regEmail" placeholder="petar@example.com" required />
+        </div>
+
+        <div class="form-group">
+          <label for="regPassword">Lozinka</label>
+          <input id="regPassword" type="password" [(ngModel)]="regPassword" name="regPassword" placeholder="Min. 8 karaktera, veliko slovo, broj, znak" required />
+          <small class="hint">Zahtev: minimum 8 karaktera, bar jedno veliko i malo slovo, broj i specijalan znak.</small>
+        </div>
+
+        <div class="form-group">
+          <label for="regConfirmPassword">Ponovite lozinku</label>
+          <input id="regConfirmPassword" type="password" [(ngModel)]="regConfirmPassword" name="regConfirmPassword" placeholder="••••••••" required />
+        </div>
+
+        <button type="submit" class="btn btn-primary" [disabled]="isLoading()">
+          {{ isLoading() ? 'Registrujem...' : 'Kreiraj nalog' }}
+        </button>
+      </form>
+    </div>
+
+    <!-- TAB 3: POTVRDA NALOGA -->
+    <div *ngIf="currentTab() === 'verify'" class="form-container">
+      <form (ngSubmit)="onVerifySubmit()">
+        <div class="form-group">
+          <label for="verifyEmail">Email adresa naloga</label>
+          <input id="verifyEmail" type="email" [(ngModel)]="verifyEmail" name="verifyEmail" placeholder="petar@example.com" required />
+        </div>
+
+        <div class="form-group">
+          <label for="verifyCode">Verifikacioni kod iz mejla</label>
+          <input id="verifyCode" type="text" maxlength="6" [(ngModel)]="verifyCode" name="verifyCode" placeholder="123456" required />
+        </div>
+
+        <button type="submit" class="btn btn-success" [disabled]="isLoading() || verifyCode.length < 6">
+          {{ isLoading() ? 'Potvrdjujem...' : 'Aktiviraj nalog' }}
+        </button>
+      </form>
+    </div>
+
+    <!-- TAB 4: POVRACAJ NALOGA MAGICNIM LINKOM (1.3) & ZABORAVLJENA LOZINKA (1.2) -->
+    <div *ngIf="currentTab() === 'recovery'" class="form-container">
+      <div class="tab-header" style="margin-bottom: 16px;">
+        <button type="button" [class.active]="recoveryMode() === 'magic'" (click)="setRecoveryMode('magic')">
+          Magicni link (1.3)
+        </button>
+        <button type="button" [class.active]="recoveryMode() === 'reset'" (click)="setRecoveryMode('reset')">
+          Reset lozinke (1.2)
+        </button>
+      </div>
+
+      <!-- 1.3 POVRACAJ NALOGA MAGICNIM LINKOM -->
+      <div *ngIf="recoveryMode() === 'magic'">
+        <div *ngIf="magicStep() === 'request'">
+          <p class="info-text">
+            Unesite email adresu naloga za autentifikaciju i povracaj naloga putem magicnog linka:
+          </p>
+          <form (ngSubmit)="onRequestMagicLink()">
+            <div class="form-group">
+              <label for="magicEmail">Email adresa</label>
+              <input id="magicEmail" type="email" [(ngModel)]="magicEmail" name="magicEmail" placeholder="petar@example.com" required />
+            </div>
+            <button type="submit" class="btn btn-primary" [disabled]="isLoading() || !magicEmail.trim()">
+              {{ isLoading() ? 'Saljem...' : 'Posalji magicni link' }}
+            </button>
+            <button type="button" class="btn btn-secondary" (click)="magicStep.set('verify')">
+              Vec imam token iz mejla
+            </button>
+          </form>
+        </div>
+
+        <div *ngIf="magicStep() === 'verify'">
+          <p class="info-text">
+            Unesite token magicnog linka poslat na <strong>{{ magicEmail }}</strong> (ili kliknite na link u MailHog-u):
+          </p>
+          <form (ngSubmit)="onVerifyMagicLink()">
+            <div class="form-group">
+              <label for="magicEmailVerify">Email adresa</label>
+              <input id="magicEmailVerify" type="email" [(ngModel)]="magicEmail" name="magicEmailVerify" required />
+            </div>
+            <div class="form-group">
+              <label for="magicToken">Token magicnog linka</label>
+              <input id="magicToken" type="text" [(ngModel)]="magicToken" name="magicToken" placeholder="32-karakterni hex token" required />
+            </div>
+            <button type="submit" class="btn btn-success" [disabled]="isLoading() || !magicToken.trim()">
+              {{ isLoading() ? 'Proveravam...' : 'Prijavi se magicnim linkom' }}
+            </button>
+            <button type="button" class="btn btn-secondary" (click)="magicStep.set('request')">
+              Nazad
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- 1.2 ZABORAVLJENA LOZINKA / RESET LOZINKE -->
+      <div *ngIf="recoveryMode() === 'reset'">
+        <div *ngIf="resetStep() === 'request'">
+          <p class="info-text">
+            Unesite email adresu za slanje kratkotrajnog linka za promenu lozinke (lozinka mora biti bar 24h stara):
+          </p>
+          <form (ngSubmit)="onForgotPasswordSubmit()">
+            <div class="form-group">
+              <label for="resetEmail">Email adresa</label>
+              <input id="resetEmail" type="email" [(ngModel)]="resetEmail" name="resetEmail" placeholder="petar@example.com" required />
+            </div>
+            <button type="submit" class="btn btn-primary" [disabled]="isLoading() || !resetEmail.trim()">
+              {{ isLoading() ? 'Saljem...' : 'Posalji link za reset lozinke' }}
+            </button>
+            <button type="button" class="btn btn-secondary" (click)="resetStep.set('confirm')">
+              Vec imam token za reset
+            </button>
+          </form>
+        </div>
+
+        <div *ngIf="resetStep() === 'confirm'">
+          <form (ngSubmit)="onResetPasswordSubmit()">
+            <div class="form-group">
+              <label for="resetEmailConfirm">Email adresa</label>
+              <input id="resetEmailConfirm" type="email" [(ngModel)]="resetEmail" name="resetEmailConfirm" required />
+            </div>
+            <div class="form-group">
+              <label for="resetToken">Token sa emaila</label>
+              <input id="resetToken" type="text" [(ngModel)]="resetToken" name="resetToken" placeholder="Token iz mejla" required />
+            </div>
+            <div class="form-group">
+              <label for="resetNewPassword">Nova lozinka</label>
+              <input id="resetNewPassword" type="password" [(ngModel)]="resetNewPassword" name="resetNewPassword" placeholder="Min. 8 karaktera, veliko slovo, broj, znak" required />
+            </div>
+            <div class="form-group">
+              <label for="resetConfirmPassword">Ponovite novu lozinku</label>
+              <input id="resetConfirmPassword" type="password" [(ngModel)]="resetConfirmPassword" name="resetConfirmPassword" placeholder="••••••••" required />
+            </div>
+            <button type="submit" class="btn btn-success" [disabled]="isLoading() || !resetToken.trim()">
+              {{ isLoading() ? 'Menjam lozinku...' : 'Sacuvaj novu lozinku' }}
+            </button>
+            <button type="button" class="btn btn-secondary" (click)="resetStep.set('request')">
+              Nazad
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+

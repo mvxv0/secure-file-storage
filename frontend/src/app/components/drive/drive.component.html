@@ -1,0 +1,371 @@
+<div class="drive-layout">
+  <!-- Gornja navigaciona traka (Header) -->
+  <header class="drive-header">
+    <div class="logo">
+      <span class="logo-icon">📁</span>
+      <h1>Secure File Storage</h1>
+    </div>
+
+    <div class="header-right">
+      <div class="user-quota" *ngIf="user()">
+        <span class="quota-label">Skladiste:</span>
+        <span class="quota-val">{{ formatQuota(user()) }}</span>
+      </div>
+
+      <button class="btn btn-outline btn-quota" *ngIf="user()" (click)="openQuotaModal()" title="Zatrazi povecanje kvote">
+        + Kvota
+      </button>
+
+      <button class="btn btn-admin" *ngIf="user()?.role === 'A'" (click)="openAdminPanel()">
+        ⚙ Admin panel
+      </button>
+
+      <button class="btn btn-notifications" (click)="toggleNotificationsModal()" title="Pregled notifikacija">
+        <span>🔔 Notifikacije</span>
+        <span class="notif-badge" *ngIf="unreadNotificationsCount() > 0">
+          {{ unreadNotificationsCount() }}
+        </span>
+      </button>
+
+      <div class="user-profile" *ngIf="user()">
+        <span class="user-name">{{ user()?.firstName }} {{ user()?.lastName }}</span>
+        <span class="user-role">({{ user()?.role }})</span>
+      </div>
+
+      <button class="btn btn-secondary" (click)="openProfileModal()">Moj nalog</button>
+      <button class="btn btn-outline" (click)="logout()">Odjavi se</button>
+    </div>
+  </header>
+
+  <!-- Glavni radni prostor -->
+  <main class="drive-main">
+    <!-- Akciona traka (Toolbar) -->
+    <div class="toolbar">
+      <div class="actions">
+        <button class="btn btn-primary" (click)="openCreateFolderModal()">
+          + Novi folder
+        </button>
+
+        <label class="btn btn-secondary file-upload-btn">
+          <span>⬆ Otpremi fajl</span>
+          <input type="file" (change)="onFileSelected($event)" style="display: none;" />
+        </label>
+      </div>
+
+      <!-- Breadcrumbs navigacija -->
+      <nav class="breadcrumbs">
+        <span *ngFor="let crumb of breadcrumbs(); let i = index; let last = last">
+          <a *ngIf="!last" (click)="goToBreadcrumb(i)">{{ crumb.name }}</a>
+          <span *ngIf="last" class="current-crumb">{{ crumb.name }}</span>
+          <span *ngIf="!last" class="separator">/</span>
+        </span>
+      </nav>
+    </div>
+
+    <!-- Obavestenja -->
+    <div *ngIf="errorMessage()" class="alert alert-error">
+      {{ errorMessage() }}
+    </div>
+    <div *ngIf="successMessage()" class="alert alert-success">
+      {{ successMessage() }}
+    </div>
+
+    <!-- Tabela sadrzaja foldera -->
+    <div class="content-table-wrapper">
+      <table class="content-table">
+        <thead>
+          <tr>
+            <th style="width: 40px;"></th>
+            <th>Naziv</th>
+            <th style="width: 120px;">Velicina</th>
+            <th style="width: 180px;">Poslednja izmena</th>
+            <th style="width: 220px; text-align: right;">Akcije</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Prazan folder poruka -->
+          <tr *ngIf="folders().length === 0 && files().length === 0 && !isLoading()">
+            <td colspan="5" class="empty-state">
+              Ovaj folder je prazan. Kreirajte novi folder ili otpremite fajl.
+            </td>
+          </tr>
+
+          <!-- Lista foldera -->
+          <tr *ngFor="let f of folders()" class="row-folder" (dblclick)="openFolder(f)">
+            <td class="icon-cell">📁</td>
+            <td class="name-cell">
+              <a (click)="openFolder(f)">{{ f.name }}</a>
+            </td>
+            <td>—</td>
+            <td>{{ f.updatedAt | date:'dd.MM.yyyy HH:mm' }}</td>
+            <td class="action-cell">
+              <button class="btn-sm" (click)="openRenameFolderModal(f, $event)">Preimenuj</button>
+              <button class="btn-sm" style="margin-left: 6px;" (click)="openFolder(f)">Otvori</button>
+            </td>
+          </tr>
+
+          <!-- Lista fajlova -->
+          <tr *ngFor="let file of files()" class="row-file">
+            <td class="icon-cell">📄</td>
+            <td class="name-cell">{{ file.name }}</td>
+            <td>{{ formatSize(file.size) }}</td>
+            <td>{{ file.updatedAt | date:'dd.MM.yyyy HH:mm' }}</td>
+            <td class="action-cell">
+              <button class="btn-sm" (click)="openRenameFileModal(file, $event)">Preimenuj</button>
+              <button class="btn-sm btn-download" style="margin-left: 6px;" (click)="downloadFile(file)">Preuzmi</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<!-- Modal za kreiranje novog foldera -->
+<div class="modal-backdrop" *ngIf="isCreateFolderOpen()" (click)="closeCreateFolderModal()">
+  <div class="modal-card" (click)="$event.stopPropagation()">
+    <h3>Novi folder</h3>
+    <div class="form-group">
+      <label for="folderName">Naziv foldera</label>
+      <input
+        id="folderName"
+        type="text"
+        [(ngModel)]="newFolderName"
+        placeholder="npr. Predmet SOA"
+        (keyup.enter)="createFolder()"
+        autofocus
+      />
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" (click)="closeCreateFolderModal()">Otkazi</button>
+      <button class="btn btn-primary" [disabled]="!newFolderName.trim()" (click)="createFolder()">Kreiraj</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal za preimenovanje foldera ili datoteke (zahtev 1.6) -->
+<div class="modal-backdrop" *ngIf="isRenameModalOpen()" (click)="closeRenameModal()">
+  <div class="modal-card" (click)="$event.stopPropagation()">
+    <h3>{{ renameTargetType() === 'folder' ? 'Preimenuj folder' : 'Preimenuj datoteku' }}</h3>
+    <div class="form-group">
+      <label for="renameInput">Novi naziv</label>
+      <input
+        id="renameInput"
+        type="text"
+        [(ngModel)]="renameNewName"
+        placeholder="Unesite novi naziv"
+        (keyup.enter)="submitRename()"
+        autofocus
+      />
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" (click)="closeRenameModal()">Otkazi</button>
+      <button class="btn btn-primary" [disabled]="!renameNewName.trim()" (click)="submitRename()">Sacuvaj</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal za pregled notifikacija (zahtev 1.7) -->
+<div class="modal-backdrop" *ngIf="isNotificationsOpen()" (click)="closeNotificationsModal()">
+  <div class="modal-card modal-notifications" (click)="$event.stopPropagation()">
+    <div class="notif-modal-header">
+      <h3>🔔 Moje notifikacije</h3>
+      <button class="btn-sm" (click)="loadNotifications()">⟳ Osveži</button>
+    </div>
+
+    <div *ngIf="isNotificationsLoading()" class="notif-empty">
+      Učitavanje notifikacija iz Cassandra baze...
+    </div>
+
+    <div *ngIf="!isNotificationsLoading() && notifications().length === 0" class="notif-empty">
+      Nemate nijednu notifikaciju.
+    </div>
+
+    <div class="notif-list" *ngIf="!isNotificationsLoading() && notifications().length > 0">
+      <div
+        *ngFor="let n of notifications()"
+        class="notif-item"
+        [class.notif-unread]="!n.isRead"
+      >
+        <div class="notif-icon">{{ getNotificationIcon(n.type) }}</div>
+        <div class="notif-body">
+          <div class="notif-top">
+            <span class="notif-resource" *ngIf="n.resourceName">{{ n.resourceName }}</span>
+            <span class="notif-type-tag">{{ n.type }}</span>
+          </div>
+          <p class="notif-message">{{ n.message }}</p>
+          <span class="notif-time">{{ n.createdAt | date:'dd.MM.yyyy HH:mm' }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary" (click)="closeNotificationsModal()">Zatvori</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal za zahtev za povecanje kvote (RK) -->
+<div class="modal-backdrop" *ngIf="isQuotaModalOpen()" (click)="closeQuotaModal()">
+  <div class="modal-card modal-quota" (click)="$event.stopPropagation()">
+    <h3>Zahtev za povećanje kvote</h3>
+    <p class="quota-current-info" *ngIf="user()">
+      Trenutna kvota: <strong>{{ formatQuota(user()) }}</strong>
+    </p>
+
+    <div *ngIf="quotaModalError()" class="alert alert-error">{{ quotaModalError() }}</div>
+    <div *ngIf="quotaModalSuccess()" class="alert alert-success">{{ quotaModalSuccess() }}</div>
+
+    <div class="form-group">
+      <label for="requestedQuotaMB">Željena nova kvota (MB)</label>
+      <input id="requestedQuotaMB" type="number" min="1" [(ngModel)]="requestedQuotaMB" />
+    </div>
+
+    <div class="form-group" style="margin-top: 10px;">
+      <label for="quotaReason">Obrazloženje (opciono)</label>
+      <input id="quotaReason" type="text" [(ngModel)]="quotaReason" placeholder="npr. Potreban prostor za projekte" />
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" (click)="closeQuotaModal()">Zatvori</button>
+      <button class="btn btn-primary" (click)="submitQuotaRequest()">Pošalji zahtev</button>
+    </div>
+
+    <div class="quota-history" *ngIf="myQuotaRequests().length > 0">
+      <h4>Moji zahtevi</h4>
+      <div class="quota-req-row" *ngFor="let r of myQuotaRequests()">
+        <div>
+          <strong>{{ formatSize(r.currentQuota) }} → {{ formatSize(r.requestedQuota) }}</strong>
+          <div class="quota-req-meta">{{ r.createdAt | date:'dd.MM.yyyy HH:mm' }} <span *ngIf="r.reason">· {{ r.reason }}</span></div>
+        </div>
+        <span class="status-pill" [ngClass]="'status-' + r.status.toLowerCase()">{{ r.status }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Admin panel modal (Pregled korisnika i zahteva za kvotu) -->
+<div class="modal-backdrop" *ngIf="isAdminPanelOpen()" (click)="closeAdminPanel()">
+  <div class="modal-card modal-admin" (click)="$event.stopPropagation()">
+    <div class="notif-modal-header">
+      <h3>⚙ Admin panel — Kvote skladišta</h3>
+      <button class="btn-sm" (click)="loadAdminData()">⟳ Osveži</button>
+    </div>
+
+    <div class="admin-tabs">
+      <button class="admin-tab" [class.active]="adminTab() === 'requests'" (click)="adminTab.set('requests')">
+        Zahtevi ({{ adminQuotaRequests().length }})
+      </button>
+      <button class="admin-tab" [class.active]="adminTab() === 'users'" (click)="adminTab.set('users')">
+        Svi korisnici ({{ adminUsers().length }})
+      </button>
+    </div>
+
+    <!-- Tab 1: Zahtevi za povecanje kvote -->
+    <div *ngIf="adminTab() === 'requests'" class="admin-table-wrap">
+      <div *ngIf="adminQuotaRequests().length === 0" class="notif-empty">
+        Nema pristiglih zahteva za povećanje kvote.
+      </div>
+      <table class="content-table" *ngIf="adminQuotaRequests().length > 0">
+        <thead>
+          <tr>
+            <th>Korisnik</th>
+            <th>Trenutna → Tražena</th>
+            <th>Razlog</th>
+            <th>Status</th>
+            <th style="text-align: right;">Akcija</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let r of adminQuotaRequests()">
+            <td>{{ r.userEmail }}</td>
+            <td>{{ formatSize(r.currentQuota) }} → <strong>{{ formatSize(r.requestedQuota) }}</strong></td>
+            <td>{{ r.reason || '—' }}</td>
+            <td><span class="status-pill" [ngClass]="'status-' + r.status.toLowerCase()">{{ r.status }}</span></td>
+            <td style="text-align: right; white-space: nowrap;">
+              <ng-container *ngIf="r.status === 'PENDING'; else resolvedLabel">
+                <button class="btn-sm btn-approve" (click)="approveQuotaRequest(r)">Odobri</button>
+                <button class="btn-sm btn-reject" (click)="rejectQuotaRequest(r)">Odbij</button>
+              </ng-container>
+              <ng-template #resolvedLabel>—</ng-template>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Tab 2: Svi korisnici sa kvotom i zauzecem -->
+    <div *ngIf="adminTab() === 'users'" class="admin-table-wrap">
+      <table class="content-table">
+        <thead>
+          <tr>
+            <th>Korisnik</th>
+            <th>Email</th>
+            <th>Uloga</th>
+            <th>Zauzeće / Kvota</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let u of adminUsers()">
+            <td>{{ u.firstName }} {{ u.lastName }}</td>
+            <td>{{ u.email }}</td>
+            <td>{{ u.role }}</td>
+            <td><strong>{{ formatSize(u.quotaUsed) }}</strong> / {{ formatSize(u.quotaLimit) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary" (click)="closeAdminPanel()">Zatvori</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal za izmenu podataka korisnickog naloga (US 02.04) -->
+<div class="modal-backdrop" *ngIf="isProfileModalOpen()" (click)="closeProfileModal()">
+  <div class="modal-card" style="max-width: 420px;" (click)="$event.stopPropagation()">
+    <h3>Izmena korisnickog naloga</h3>
+
+    <div class="form-group" style="margin-bottom: 12px;">
+      <label for="profFirstName">Ime</label>
+      <input id="profFirstName" type="text" [(ngModel)]="profileFirstName" placeholder="Ime (2-50 karaktera)" />
+    </div>
+
+    <div class="form-group" style="margin-bottom: 12px;">
+      <label for="profLastName">Prezime</label>
+      <input id="profLastName" type="text" [(ngModel)]="profileLastName" placeholder="Prezime (2-50 karaktera)" />
+    </div>
+
+    <div class="form-group" style="margin-bottom: 12px;">
+      <label for="profNewPass">Nova lozinka (opciono, min 24h starost trenutne)</label>
+      <input id="profNewPass" type="password" [(ngModel)]="profileNewPassword" placeholder="Ostavite prazno ako ne menjate" />
+    </div>
+
+    <div class="form-group" style="margin-bottom: 12px;" *ngIf="profileNewPassword">
+      <label for="profConfPass">Potvrdite novu lozinku</label>
+      <input id="profConfPass" type="password" [(ngModel)]="profileConfirmPassword" placeholder="Ponovite novu lozinku" />
+    </div>
+
+    <div class="form-group" style="margin-bottom: 12px;">
+      <label for="profCode">Verifikacioni kod sa emaila</label>
+      <div style="display: flex; gap: 8px;">
+        <input id="profCode" type="text" maxlength="6" [(ngModel)]="profileVerificationCode" placeholder="6-cifreni kod" />
+        <button type="button" class="btn btn-secondary" style="white-space: nowrap;" [disabled]="isProfileLoading()" (click)="requestProfileUpdateCode()">
+          {{ profileUpdateCodeSent() ? 'Posalji ponovo' : 'Posalji kod na mejl' }}
+        </button>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" (click)="closeProfileModal()">Otkazi</button>
+      <button class="btn btn-primary" [disabled]="isProfileLoading() || !profileVerificationCode.trim()" (click)="submitProfileUpdate()">
+        Sacuvaj izmene
+      </button>
+    </div>
+  </div>
+</div>
+
+

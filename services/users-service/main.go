@@ -6,10 +6,14 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/mvxv0/secure-file-storage/common/auth"
 	"github.com/mvxv0/secure-file-storage/common/httputil"
 	"github.com/mvxv0/secure-file-storage/services/users-service/internal/config"
 	"github.com/mvxv0/secure-file-storage/services/users-service/internal/database"
+	"github.com/mvxv0/secure-file-storage/services/users-service/internal/handler"
 	"github.com/mvxv0/secure-file-storage/services/users-service/internal/mailer"
+	"github.com/mvxv0/secure-file-storage/services/users-service/internal/repository"
+	"github.com/mvxv0/secure-file-storage/services/users-service/internal/service"
 )
 
 func main() {
@@ -31,7 +35,24 @@ func main() {
 
 	// inicijalizacija smtp klijenta za mailhog (docker kontejner gdrive-mailhog na portu 1025, web inbox na 8025)
 	mailClient := mailer.New(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPFrom)
-	_ = mailClient // koristice se u handlerima za registraciju, otp i zaboravljenu sifru
+
+	// inicijalizacija slojeva: repository -> service -> handler
+	userRepo := repository.NewUserRepository(mongoDB.DB)
+	quotaRepo := repository.NewQuotaRepository(mongoDB.DB)
+	authService := service.NewAuthService(userRepo, mailClient, cfg)
+	quotaService := service.NewQuotaService(userRepo, quotaRepo)
+	authHandler := handler.NewAuthHandler(authService)
+	quotaHandler := handler.NewQuotaHandler(quotaService)
+	internalHandler := handler.NewInternalHandler(userRepo)
+
+	// automatsko kreiranje podrazumevanog admin naloga ako ne postoji u bazi
+	if mongoDB != nil && mongoDB.DB != nil {
+		seedCtx, seedCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := quotaService.EnsureDefaultAdmin(seedCtx, cfg); err != nil {
+			log.Printf("[USERS-SERVICE] Upozorenje: neuspesno kreiranje podrazumevanog admin naloga: %v", err)
+		}
+		seedCancel()
+	}
 
 	mux := http.NewServeMux()
 
@@ -53,10 +74,46 @@ func main() {
 		})
 	}
 
-	// rute za proveru zdravlja servisa (direktno na :8081/health ili kroz gateway na :8080/api/auth/health)
+	// rute za proveru zdravlja servisa
 	mux.HandleFunc("GET /health", healthHandler)
 	mux.HandleFunc("GET /api/auth/health", healthHandler)
 	mux.HandleFunc("GET /api/users/health", healthHandler)
+
+	// rute za registraciju i potvrdu registracije (zahtev 1.1)
+	mux.HandleFunc("POST /api/auth/register", authHandler.Register)
+	mux.HandleFunc("POST /api/auth/verify-email", authHandler.VerifyEmail)
+
+	// rute za kombinovanu prijavu (lozinka + OTP) i odjavu (zahtev 1.2)
+	mux.HandleFunc("POST /api/auth/login", authHandler.Login)
+	mux.HandleFunc("POST /api/auth/verify-otp", authHandler.VerifyOTP)
+	mux.HandleFunc("POST /api/auth/logout", authHandler.Logout)
+
+	// rute za zaboravljenu lozinku i imejl-bazirani reset sa kratkotrajnim linkom
+	mux.HandleFunc("POST /api/auth/forgot-password", authHandler.ForgotPassword)
+	mux.HandleFunc("POST /api/auth/reset-password", authHandler.ResetPassword)
+
+	// rute za povracaj naloga upotrebom magicnog linka (zahtev 1.3)
+	mux.HandleFunc("POST /api/auth/magic-link", authHandler.RequestMagicLink)
+	mux.HandleFunc("POST /api/auth/magic-link/verify", authHandler.VerifyMagicLink)
+
+	// rute za pregled i izmenu podataka korisnickog naloga nakon prijave uz potvrdu putem emaila i kontrolu uloge ([US 09.01])
+	rkOrAdmin := []string{"RK", "A"}
+	mux.HandleFunc("GET /api/users/me", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, authHandler.GetProfile))
+	mux.HandleFunc("POST /api/users/me/request-update", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, authHandler.RequestAccountUpdate))
+	mux.HandleFunc("PUT /api/users/me", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, authHandler.UpdateAccount))
+	mux.HandleFunc("POST /api/users/me/update", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, authHandler.UpdateAccount))
+
+	// rute za upravljanje kvotama skladista (RK podnosi zahtev, A pregleda korisnike i odobrava/odbija zahteve)
+	mux.HandleFunc("POST /api/users/quota-requests", auth.Middleware(cfg.JWTSecret, quotaHandler.SubmitQuotaRequest))
+	mux.HandleFunc("GET /api/users/quota-requests/me", auth.Middleware(cfg.JWTSecret, quotaHandler.GetMyQuotaRequests))
+	mux.HandleFunc("GET /api/users", auth.Middleware(cfg.JWTSecret, quotaHandler.GetAllUsers))
+	mux.HandleFunc("GET /api/users/quota-requests", auth.Middleware(cfg.JWTSecret, quotaHandler.GetAllQuotaRequests))
+	mux.HandleFunc("POST /api/users/quota-requests/{id}/approve", auth.Middleware(cfg.JWTSecret, quotaHandler.ApproveQuotaRequest))
+	mux.HandleFunc("POST /api/users/quota-requests/{id}/reject", auth.Middleware(cfg.JWTSecret, quotaHandler.RejectQuotaRequest))
+
+	// interne rute za sinhronu komunikaciju sa drugim mikroservisima (zahtev 2.5)
+	mux.HandleFunc("GET /internal/users/{id}/quota", internalHandler.GetUserQuota)
+	mux.HandleFunc("PUT /internal/users/{id}/quota-used", internalHandler.UpdateUserQuotaUsed)
 
 	// pokretanje http servera za users-service na portu 8081
 	server := &http.Server{

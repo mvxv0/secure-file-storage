@@ -1,7 +1,101 @@
 package main
 
-import "fmt"
+import (
+	"log"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/mvxv0/secure-file-storage/common/auth"
+	"github.com/mvxv0/secure-file-storage/common/httputil"
+	"github.com/mvxv0/secure-file-storage/services/notifications-service/internal/config"
+	"github.com/mvxv0/secure-file-storage/services/notifications-service/internal/database"
+	"github.com/mvxv0/secure-file-storage/services/notifications-service/internal/handler"
+	"github.com/mvxv0/secure-file-storage/services/notifications-service/internal/repository"
+	"github.com/mvxv0/secure-file-storage/services/notifications-service/internal/service"
+)
 
 func main() {
-	fmt.Println("notifications-service running")
+	cfg := config.Load()
+
+	// inicijalizacija repozitorijuma (povezuje se na Cassandru cim klaster postane dostupan)
+	notificationRepo := repository.NewNotificationRepository(nil)
+
+	var (
+		dbMu        sync.RWMutex
+		cassandraDB *database.CassandraDB
+	)
+	connectCassandra := func() {
+		for {
+			db, err := database.Connect(cfg.CassandraHosts, cfg.CassandraKeyspace)
+			if err != nil {
+				log.Printf("[NOTIFICATIONS-SERVICE] Ceka se Cassandra (%s): %v. Ponovni pokusaj za 5s...", cfg.CassandraHosts, err)
+				time.Sleep(5 * time.Second)
+				continue
+			}
+			dbMu.Lock()
+			cassandraDB = db
+			dbMu.Unlock()
+			notificationRepo.SetSession(db.Session)
+			log.Printf("[NOTIFICATIONS-SERVICE] Uspesno povezan na Cassandra klaster (%s)", cfg.CassandraHosts)
+			return
+		}
+	}
+
+	// pokrecemo povezivanje u pozadini kako servis ne bi pao dok se Cassandra podize u Dockeru
+	go connectCassandra()
+	defer func() {
+		dbMu.RLock()
+		db := cassandraDB
+		dbMu.RUnlock()
+		if db != nil {
+			db.Close()
+		}
+	}()
+
+	notificationService := service.NewNotificationService(notificationRepo, cfg.AutoSeed)
+	notificationHandler := handler.NewNotificationHandler(notificationService)
+
+	mux := http.NewServeMux()
+
+	healthHandler := func(w http.ResponseWriter, r *http.Request) {
+		dbMu.RLock()
+		db := cassandraDB
+		dbMu.RUnlock()
+
+		cassandraStatus := "connected"
+		if db == nil || db.Ping() != nil {
+			cassandraStatus = "disconnected"
+		}
+
+		httputil.WriteSuccess(w, http.StatusOK, "notifications-service je aktivan", map[string]string{
+			"service":   "notifications-service",
+			"cassandra": cassandraStatus,
+			"keyspace":  cfg.CassandraKeyspace,
+			"time":      time.Now().Format(time.RFC3339),
+		})
+	}
+
+	mux.HandleFunc("GET /health", healthHandler)
+	mux.HandleFunc("GET /api/notifications/health", healthHandler)
+
+	// rute za pregled i rucno popunjavanje notifikacija uz kontrolu pristupa po ulozi ([US 09.01])
+	rkOrAdmin := []string{"RK", "A"}
+	mux.HandleFunc("GET /api/notifications", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, notificationHandler.GetNotifications))
+	mux.HandleFunc("POST /api/notifications", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, notificationHandler.CreateNotification))
+	mux.HandleFunc("POST /api/notifications/seed", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, notificationHandler.SeedNotifications))
+	mux.HandleFunc("POST /api/notifications/read", auth.RequireRoles(cfg.JWTSecret, rkOrAdmin, notificationHandler.MarkAllAsRead))
+
+	server := &http.Server{
+		Addr:         ":" + cfg.Port,
+		Handler:      mux,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	log.Printf("[NOTIFICATIONS-SERVICE] Pokrenut na http://localhost:%s", cfg.Port)
+	if err := server.ListenAndServe(); err != nil {
+		log.Fatalf("[NOTIFICATIONS-SERVICE] Greska pri pokretanju servera: %v", err)
+	}
 }
